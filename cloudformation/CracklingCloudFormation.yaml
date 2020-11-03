@@ -137,7 +137,7 @@ Resources:
   CreateJobFunction:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Code: ../modules/consensus/lambda_function.py
+      Code: ../modules/createJob/lambda_function.py
       Description: Puts scan parameters into the job table
       Handler: lambda_function.lambda_handler
       MemorySize: 1024
@@ -224,6 +224,108 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 1963b04f-2c09-4261-89e6-6cf7e9330fcc
+  TargetScanRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 571c0a26-ee59-4ab9-9dfe-c6eb0fddbdbb
+  TargetScanPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: TargetScanPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'dynamodb:PutItem'
+              - 'dynamodb:BatchWriteItem'
+              - 'dynamodb:Query'
+            Effect: Allow
+            Resource: !GetAtt 
+              - TargetsTable
+              - Arn
+          - Action:
+              - 'dynamodb:DescribeStream'
+              - 'dynamodb:GetRecords'
+              - 'dynamodb:GetShardIterator'
+              - 'dynamodb:ListStreams'
+            Effect: Allow
+            Resource: !Sub >-
+              arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${JobsTable}/stream/*
+            Sid: Stmt5747548
+      Roles:
+        - !Ref TargetScanRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9a137981-a570-41e7-bba0-3d05f58520a1
+        
+  TargetsTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: JobID
+          AttributeType: S
+        - AttributeName: TargetID
+          AttributeType: 'N'
+      KeySchema:
+        - AttributeName: JobID
+          KeyType: HASH
+        - AttributeName: TargetID
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 94ad6aee-7723-4408-a41d-1620a280cf3b
+        
+  TargetScanFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code: ../modules/targetScan/lambda_function.py
+      Description: Identify potential targets in the input
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt 
+        - TargetScanRole
+        - Arn
+      Runtime: python3.8
+      Environment:
+        Variables:
+          STACK_NAME: !Ref 'AWS::StackName'
+          TARGETS_TABLE: !Ref TargetsTable
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: ddfc2f07-2c3e-42c1-90b7-73771be6a243
+        
+  TargetScanEventSourceMapping:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn: !GetAtt 
+        - JobsTable
+        - StreamArn
+      FunctionName: !GetAtt 
+        - TargetScanFunction
+        - Arn
+      StartingPosition: TRIM_HORIZON
+    DependsOn: 
+      - TargetScanPolicy
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 1cf9d574-dd2f-401c-afe0-fd12bc830245
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -281,19 +383,21 @@ Metadata:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
         height: 60
       position:
         x: 90
-        'y': 150
+        'y': 180
       z: 3
       parent: 1237aee6-1763-4764-8e61-cff47a07a281
       embeds: []
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
@@ -317,6 +421,7 @@ Metadata:
       parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
       embeds: []
       iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
@@ -353,7 +458,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: -50
+        x: 60
         'y': 750
       z: 1
       embeds: []
@@ -372,6 +477,7 @@ Metadata:
       isassociatedwith:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
@@ -400,7 +506,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 260
+        x: 270
         'y': 750
       z: 1
       embeds: []
@@ -409,9 +515,56 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 260
+        x: 270
         'y': 870
       z: 1
       embeds: []
       isassociatedwith:
         - bfb8ab7d-a828-4dae-9daf-c8d3fc91fcd2
+    94ad6aee-7723-4408-a41d-1620a280cf3b:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 640
+        'y': 750
+      z: 1
+      embeds: []
+    571c0a26-ee59-4ab9-9dfe-c6eb0fddbdbb:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 530
+        'y': 860
+      z: 1
+      embeds: []
+    ddfc2f07-2c3e-42c1-90b7-73771be6a243:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 530
+        'y': 750
+      z: 1
+      embeds: []
+    9a137981-a570-41e7-bba0-3d05f58520a1:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 640
+        'y': 860
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 571c0a26-ee59-4ab9-9dfe-c6eb0fddbdbb
+    1cf9d574-dd2f-401c-afe0-fd12bc830245:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 390
+        'y': 750
+      z: 1
+      embeds: []
