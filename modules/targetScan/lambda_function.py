@@ -1,12 +1,15 @@
-import boto3, os, re
+import boto3, os, re, json
 
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
+CONSENSUS_SNS = os.getenv('CONSENSUS_TOPIC')
+ISSL_SNS = os.getenv('ISSL_TOPIC')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
+snsClient = boto3.client('sns')
 
 # Function that returns the reverse-complement of a given sequence
 def rc(dna):
@@ -72,7 +75,27 @@ def find_targets(params):
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
             print(index, target)
-            batch.put_item(Item=create_target_entry(params, index, target))
+            targetEntry = create_target_entry(params, index, target)
+            
+            batch.put_item(Item=targetEntry)
+            
+            for targetTopic in [ISSL_SNS, CONSENSUS_SNS]:
+                response = snsClient.publish(
+                    TargetArn=targetTopic,
+                    Message=json.dumps(
+                        {
+                            'default': json.dumps(
+                                {
+                                    'jobid': params['JobID'],
+                                    'sequence': target[0],
+                                    'index': index
+                                }
+                            )
+                        }
+                    ),
+                    MessageStructure='json'
+                )
+                print(targetTopic, response)
 
 
 def deleteCandidateTargets(jobid):
@@ -97,16 +120,13 @@ def lambda_handler(event, context):
 
     inserted = [r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
     for i in inserted:
-        print(i)
         try:
             jobid = i['JobID']['S']
             params = {p: i[p][required[p]] for p in required}
             params['Sequence'] = clean_candidate_sequence(params['Sequence'])
         except:
             return 'Entry contains invalid information'
-        print('debug1')
         find_targets(params)
-        print('debug2')
         print('Processed INSERT event for {}.'.format(jobid))
         
     removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']

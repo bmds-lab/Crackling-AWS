@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
 Resources:
-
   CracklingRestApi:
     Type: 'AWS::ApiGateway::RestApi'
     Properties:
@@ -266,6 +265,14 @@ Resources:
             Resource: !Sub >-
               arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${JobsTable}/stream/*
             Sid: Stmt5747548
+          - Action:
+              - 'SNS:Publish'
+            Effect: Allow
+            Resource: !Ref ConsensusTopic
+          - Action:
+              - 'SNS:Publish'
+            Effect: Allow
+            Resource: !Ref IsslTopic
       Roles:
         - !Ref TargetScanRole
     Metadata:
@@ -290,7 +297,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 94ad6aee-7723-4408-a41d-1620a280cf3b
-        
   TargetScanFunction:
     Type: 'AWS::Lambda::Function'
     Properties:
@@ -307,10 +313,11 @@ Resources:
         Variables:
           STACK_NAME: !Ref 'AWS::StackName'
           TARGETS_TABLE: !Ref TargetsTable
+          CONSENSUS_TOPIC: !Ref ConsensusTopic
+          ISSL_TOPIC: !Ref IsslTopic
     Metadata:
       'AWS::CloudFormation::Designer':
         id: ddfc2f07-2c3e-42c1-90b7-73771be6a243
-        
   TargetScanEventSourceMapping:
     Type: 'AWS::Lambda::EventSourceMapping'
     Properties:
@@ -321,11 +328,173 @@ Resources:
         - TargetScanFunction
         - Arn
       StartingPosition: TRIM_HORIZON
-    DependsOn: 
+    DependsOn:
       - TargetScanPolicy
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 1cf9d574-dd2f-401c-afe0-fd12bc830245
+  ConsensusTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 905327e2-b7ec-4259-b8d4-25bb18c8d668
+  IsslTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 74c74516-a10f-432d-882e-7e5d17e75eea
+  ConsensusSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !GetAtt 
+        - ConsensusFunction
+        - Arn
+      Protocol: lambda
+      TopicArn: !Ref ConsensusTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 3fab93bb-bb1b-404a-865b-2270fafb020a
+  IsslSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !GetAtt 
+        - IsslFunction
+        - Arn
+      Protocol: lambda
+      TopicArn: !Ref IsslTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 906cd53d-1c3c-4d85-b2bd-d480d870d83f
+  ConsensusFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code: ../modules/consensus/lambda_function.py
+      Description: Evaluate guide efficiency using consensus approach
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt 
+        - ConsensusRole
+        - Arn
+      Runtime: python3.8
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref TargetsTable
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7418d3b1-5f2c-41ab-bbde-90ed5851e136
+  ConsensusRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0a474368-1a81-4e15-99c3-58bad70cb460
+  IsslFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code: ../modules/issl/lambda_function.py
+      Description: Evaluate guide specificity using ISSL
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt 
+        - IsslRole
+        - Arn
+      Runtime: python3.8
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref TargetsTable
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b25105be-158e-4fc3-8e00-f656951de458
+  IsslRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 20780a16-27db-4134-8405-a329ce705b1b
+  IsslIndexReadPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: IsslIndexReadPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 's3:GetObject'
+              - 's3:HeadObject'
+            Effect: Allow
+            Resource: 'arn:aws:s3:::issl-indexes/*'
+        Version: 2012-10-17
+      Roles:
+        - !Ref IsslRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 20f75e68-e622-43df-85aa-87c995aa9fb8
+  UpdateTargetPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: UpdateTargetPolicy
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 'dynamodb:UpdateItem'
+            Effect: Allow
+            Resource: !GetAtt 
+              - TargetsTable
+              - Arn
+        Version: 2012-10-17
+      Roles:
+        - !Ref ConsensusRole
+        - !Ref IsslRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 79eb6c99-bb5a-4037-8020-dac91ee146b3
+  IsslInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref IsslFunction
+      Principal: sns.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Ref IsslTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a8557da8-2b52-49d7-9903-e62816cb32d7
+  ConsensusInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref ConsensusFunction
+      Principal: sns.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Ref ConsensusTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9de87f36-0e31-4f60-b9f9-25a8ca9a46b7
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -333,7 +502,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 60
+        x: 150
         'y': 630
       z: 1
       embeds: []
@@ -342,8 +511,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 180
-        'y': 630
+        x: 150
+        'y': 720
       z: 1
       embeds: []
       isassociatedwith:
@@ -384,6 +553,34 @@ Metadata:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
@@ -397,6 +594,34 @@ Metadata:
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
@@ -433,6 +658,34 @@ Metadata:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
       dependson:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
     bfb8ab7d-a828-4dae-9daf-c8d3fc91fcd2:
@@ -440,7 +693,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 60
+        x: 330
         'y': 870
       z: 1
       embeds: []
@@ -449,7 +702,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 60
+        x: 330
         'y': 750
       z: 1
       embeds: []
@@ -458,7 +711,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 60
+        x: 240
         'y': 750
       z: 1
       embeds: []
@@ -483,13 +736,41 @@ Metadata:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     7264d5d4-f58a-4769-bde3-7796cdfa22e5:
       size:
         width: 60
         height: 60
       position:
-        x: 390
-        'y': 660
+        x: 60
+        'y': 630
       z: 1
       embeds: []
     c32a628e-a0c5-4464-936c-e55983f5dfea:
@@ -497,8 +778,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 540
-        'y': 660
+        x: 60
+        'y': 720
       z: 1
       embeds: []
     3bfd580f-ae76-49e1-adc0-412ec581b212:
@@ -506,7 +787,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 270
+        x: 450
         'y': 750
       z: 1
       embeds: []
@@ -515,7 +796,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 270
+        x: 450
         'y': 870
       z: 1
       embeds: []
@@ -526,8 +807,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 640
-        'y': 750
+        x: 810
+        'y': 930
       z: 1
       embeds: []
     571c0a26-ee59-4ab9-9dfe-c6eb0fddbdbb:
@@ -535,8 +816,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 530
-        'y': 860
+        x: 810
+        'y': 690
       z: 1
       embeds: []
     ddfc2f07-2c3e-42c1-90b7-73771be6a243:
@@ -544,8 +825,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 530
-        'y': 750
+        x: 810
+        'y': 780
       z: 1
       embeds: []
     9a137981-a570-41e7-bba0-3d05f58520a1:
@@ -553,8 +834,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 640
-        'y': 860
+        x: 720
+        'y': 690
       z: 1
       embeds: []
       isassociatedwith:
@@ -564,7 +845,130 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 390
+        x: 570
         'y': 750
       z: 1
       embeds: []
+      dependson:
+        - 9a137981-a570-41e7-bba0-3d05f58520a1
+    905327e2-b7ec-4259-b8d4-25bb18c8d668:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 960
+        'y': 870
+      z: 1
+      embeds: []
+    3fab93bb-bb1b-404a-865b-2270fafb020a:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 960
+        'y': 990
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 905327e2-b7ec-4259-b8d4-25bb18c8d668
+    74c74516-a10f-432d-882e-7e5d17e75eea:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 870
+      z: 1
+      embeds: []
+    906cd53d-1c3c-4d85-b2bd-d480d870d83f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 990
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 74c74516-a10f-432d-882e-7e5d17e75eea
+    0a474368-1a81-4e15-99c3-58bad70cb460:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 960
+        'y': 1230
+      z: 1
+      embeds: []
+    7418d3b1-5f2c-41ab-bbde-90ed5851e136:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 960
+        'y': 1140
+      z: 1
+      embeds: []
+    20780a16-27db-4134-8405-a329ce705b1b:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 1230
+      z: 1
+      embeds: []
+    b25105be-158e-4fc3-8e00-f656951de458:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 1140
+      z: 1
+      embeds: []
+    20f75e68-e622-43df-85aa-87c995aa9fb8:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 1350
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 20780a16-27db-4134-8405-a329ce705b1b
+    79eb6c99-bb5a-4037-8020-dac91ee146b3:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 810
+        'y': 1230
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 0a474368-1a81-4e15-99c3-58bad70cb460
+        - 20780a16-27db-4134-8405-a329ce705b1b
+    a8557da8-2b52-49d7-9903-e62816cb32d7:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 510
+        'y': 990
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - b25105be-158e-4fc3-8e00-f656951de458
+    9de87f36-0e31-4f60-b9f9-25a8ca9a46b7:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1100
+        'y': 990
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 7418d3b1-5f2c-41ab-bbde-90ed5851e136
