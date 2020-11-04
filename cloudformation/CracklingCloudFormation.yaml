@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Resources:
+
   CracklingRestApi:
     Type: 'AWS::ApiGateway::RestApi'
     Properties:
@@ -270,7 +271,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 9a137981-a570-41e7-bba0-3d05f58520a1
-        
   TargetsTable:
     Type: 'AWS::DynamoDB::Table'
     Properties:

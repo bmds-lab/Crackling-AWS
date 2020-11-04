@@ -62,6 +62,8 @@ def target_iterator(seq):
     
     for possibleTarget in possibleTargets:
         print(possibleTarget)
+        if possibleTargets[possibleTarget] != 1:
+            continue
         yield (possibleTarget, possibleTargets[possibleTarget])
 
 
