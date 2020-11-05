@@ -1,2 +1,4 @@
 _*/*
 cloudformation/CracklingCloudFormation.yaml.packaged
+**/.venv/**
+**/package/**

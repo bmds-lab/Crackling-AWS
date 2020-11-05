@@ -36,7 +36,43 @@ Please refer to our paper when using Crackling:
 
 ## Deployment
 
+### Consensus
 
+The consensus module has Python dependencies that need to be installed.
+
+They need to be installed and packaged locally before deploying to AWS:
+
+```
+cd modules/consensus
+
+tar.exe -czf deployment.package.zip package/*
+```
+
+Read more in the AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-dependencies
+
+On Windows (with Windows Python Launcher installed):
+
+```
+cd modules/consensus
+
+py -3 -m venv .venv
+
+.venv\Scripts\activate.bat
+
+pip install --target ./package joblib sklearn
+
+pip freeze > requirements.txt
+
+pip install -r requirements.txt
+```
+
+If you make changes to the dependencies, make sure the `requirements.txt` file is updated:
+
+```
+cd modules/consensus
+
+pip freeze > requirements.txt
+```
 
 ## Development
 
