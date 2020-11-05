@@ -1,4 +1,4 @@
 def lambda_handler(event, context):
-    print(event)
+    print('Hello, World! From ISSL.')
     return (event)
     

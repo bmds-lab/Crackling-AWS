@@ -340,13 +340,11 @@ Resources:
         id: 1cf9d574-dd2f-401c-afe0-fd12bc830245
   ConsensusTopic:
     Type: 'AWS::SNS::Topic'
-    Properties: {}
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 905327e2-b7ec-4259-b8d4-25bb18c8d668
   IsslTopic:
     Type: 'AWS::SNS::Topic'
-    Properties: {}
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 74c74516-a10f-432d-882e-7e5d17e75eea
@@ -393,7 +391,21 @@ Resources:
   ConsensusRole:
     Type: 'AWS::IAM::Role'
     Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                - 'sns:Subscribe'
+                - 'sns:Receive'
+                - 'sns:Unsubscribe'
+                Effect: Allow
+                Resource: !Ref ConsensusTopic
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       AssumeRolePolicyDocument:
+        Version: 2012-10-17
         Statement:
           - Action:
               - 'sts:AssumeRole'
@@ -401,9 +413,6 @@ Resources:
             Principal:
               Service:
                 - lambda.amazonaws.com
-        Version: 2012-10-17
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 0a474368-1a81-4e15-99c3-58bad70cb460
@@ -428,7 +437,21 @@ Resources:
   IsslRole:
     Type: 'AWS::IAM::Role'
     Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                - 'sns:Subscribe'
+                - 'sns:Receive'
+                - 'sns:Unsubscribe'
+                Effect: Allow
+                Resource: !Ref IsslTopic
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       AssumeRolePolicyDocument:
+        Version: 2012-10-17
         Statement:
           - Action:
               - 'sts:AssumeRole'
@@ -436,12 +459,10 @@ Resources:
             Principal:
               Service:
                 - lambda.amazonaws.com
-        Version: 2012-10-17
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 20780a16-27db-4134-8405-a329ce705b1b
+        
   UpdateTargetPolicy:
     Type: 'AWS::IAM::Policy'
     Properties:
@@ -465,9 +486,10 @@ Resources:
     Type: 'AWS::Lambda::Permission'
     Properties:
       Action: 'lambda:InvokeFunction'
-      FunctionName: !Ref IsslFunction
+      FunctionName: !GetAtt 
+        - IsslFunction
+        - Arn
       Principal: sns.amazonaws.com
-      SourceAccount: !Ref 'AWS::AccountId'
       SourceArn: !Ref IsslTopic
     Metadata:
       'AWS::CloudFormation::Designer':
@@ -476,9 +498,10 @@ Resources:
     Type: 'AWS::Lambda::Permission'
     Properties:
       Action: 'lambda:InvokeFunction'
-      FunctionName: !Ref ConsensusFunction
+      FunctionName: !GetAtt 
+        - ConsensusFunction
+        - Arn
       Principal: sns.amazonaws.com
-      SourceAccount: !Ref 'AWS::AccountId'
       SourceArn: !Ref ConsensusTopic
     Metadata:
       'AWS::CloudFormation::Designer':
@@ -494,7 +517,7 @@ Resources:
             Effect: Allow
             Principal:
               Service:
-                - 'sns.amazonaws.com'
+                - sns.amazonaws.com
             Action: 'sns:Publish'
             Resource: !Ref IsslTopic
       Topics:
@@ -513,7 +536,7 @@ Resources:
             Effect: Allow
             Principal:
               Service:
-                - 'sns.amazonaws.com'
+                - sns.amazonaws.com
             Action: 'sns:Publish'
             Resource: !Ref ConsensusTopic
       Topics:
@@ -820,7 +843,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 510
+        x: 280
         'y': 1140
       z: 1
       embeds: []
