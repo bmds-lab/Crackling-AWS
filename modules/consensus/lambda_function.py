@@ -1,3 +1,4 @@
 def lambda_handler(event, context):
-    return (event, context)
+    print(event)
+    return (event)
     

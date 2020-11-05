@@ -1,4 +1,9 @@
 AWSTemplateFormatVersion: 2010-09-09
+Outputs:
+  CracklingApi:
+    Description: Crackling API endpoint
+    Value: !Sub >-
+      https://${CracklingRestApi}.execute-api.${AWS::Region}.amazonaws.com/${CracklingRestApiStage}
 Resources:
   CracklingRestApi:
     Type: 'AWS::ApiGateway::RestApi'
@@ -381,7 +386,7 @@ Resources:
       Runtime: python3.8
       Environment:
         Variables:
-          JOBS_TABLE: !Ref TargetsTable
+          TARGETS_TABLE: !Ref TargetsTable
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 7418d3b1-5f2c-41ab-bbde-90ed5851e136
@@ -416,7 +421,7 @@ Resources:
       Runtime: python3.8
       Environment:
         Variables:
-          JOBS_TABLE: !Ref TargetsTable
+          TARGETS_TABLE: !Ref TargetsTable
     Metadata:
       'AWS::CloudFormation::Designer':
         id: b25105be-158e-4fc3-8e00-f656951de458
@@ -437,23 +442,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 20780a16-27db-4134-8405-a329ce705b1b
-  IsslIndexReadPolicy:
-    Type: 'AWS::IAM::Policy'
-    Properties:
-      PolicyName: IsslIndexReadPolicy
-      PolicyDocument:
-        Statement:
-          - Action:
-              - 's3:GetObject'
-              - 's3:HeadObject'
-            Effect: Allow
-            Resource: 'arn:aws:s3:::issl-indexes/*'
-        Version: 2012-10-17
-      Roles:
-        - !Ref IsslRole
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 20f75e68-e622-43df-85aa-87c995aa9fb8
   UpdateTargetPolicy:
     Type: 'AWS::IAM::Policy'
     Properties:
@@ -495,6 +483,44 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 9de87f36-0e31-4f60-b9f9-25a8ca9a46b7
+  IsslTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: IsslTopicPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: Sid1
+            Effect: Allow
+            Principal:
+              Service:
+                - 'sns.amazonaws.com'
+            Action: 'sns:Publish'
+            Resource: !Ref IsslTopic
+      Topics:
+        - !Ref IsslTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: ed86b54b-3163-4d07-a72c-7399c6b8d918
+  ConsensusTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: IsslTopicPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: Sid1
+            Effect: Allow
+            Principal:
+              Service:
+                - 'sns.amazonaws.com'
+            Action: 'sns:Publish'
+            Resource: !Ref ConsensusTopic
+      Topics:
+        - !Ref ConsensusTopic
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: effea140-81d9-4322-9634-425419e867d2
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -502,7 +528,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 150
+        x: 330
         'y': 630
       z: 1
       embeds: []
@@ -511,8 +537,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 150
-        'y': 720
+        x: 450
+        'y': 630
       z: 1
       embeds: []
       isassociatedwith:
@@ -542,97 +568,19 @@ Metadata:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
         height: 60
       position:
         x: 90
-        'y': 180
+        'y': 150
       z: 3
       parent: 1237aee6-1763-4764-8e61-cff47a07a281
       embeds: []
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
       dependson:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
     8a5ba4db-dc88-4861-87f4-c2ef066286aa:
@@ -647,45 +595,6 @@ Metadata:
       embeds: []
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
       dependson:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
     bfb8ab7d-a828-4dae-9daf-c8d3fc91fcd2:
@@ -693,8 +602,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 330
-        'y': 870
+        x: 120
+        'y': 890
       z: 1
       embeds: []
     7e5fdb7c-849e-477b-bd32-203183c47ca5:
@@ -702,8 +611,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 330
-        'y': 750
+        x: 120
+        'y': 780
       z: 1
       embeds: []
     80b5073f-fd00-42d8-a12d-e61d272405b9:
@@ -711,8 +620,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 240
-        'y': 750
+        x: 20
+        'y': 780
       z: 1
       embeds: []
       isassociatedwith:
@@ -731,39 +640,6 @@ Metadata:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     7264d5d4-f58a-4769-bde3-7796cdfa22e5:
       size:
         width: 60
@@ -778,8 +654,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 60
-        'y': 720
+        x: 220
+        'y': 630
       z: 1
       embeds: []
     3bfd580f-ae76-49e1-adc0-412ec581b212:
@@ -787,8 +663,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 450
-        'y': 750
+        x: 230
+        'y': 780
       z: 1
       embeds: []
     1963b04f-2c09-4261-89e6-6cf7e9330fcc:
@@ -796,8 +672,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 450
-        'y': 870
+        x: 230
+        'y': 890
       z: 1
       embeds: []
       isassociatedwith:
@@ -845,8 +721,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 570
-        'y': 750
+        x: 340
+        'y': 780
       z: 1
       embeds: []
       dependson:
@@ -927,17 +803,6 @@ Metadata:
         'y': 1140
       z: 1
       embeds: []
-    20f75e68-e622-43df-85aa-87c995aa9fb8:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 630
-        'y': 1350
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 20780a16-27db-4134-8405-a329ce705b1b
     79eb6c99-bb5a-4037-8020-dac91ee146b3:
       size:
         width: 60
@@ -956,7 +821,7 @@ Metadata:
         height: 60
       position:
         x: 510
-        'y': 990
+        'y': 1140
       z: 1
       embeds: []
       isassociatedwith:
@@ -966,9 +831,31 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 1100
-        'y': 990
+        x: 1110
+        'y': 1140
       z: 1
       embeds: []
       isassociatedwith:
         - 7418d3b1-5f2c-41ab-bbde-90ed5851e136
+    ed86b54b-3163-4d07-a72c-7399c6b8d918:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 510
+        'y': 870
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 74c74516-a10f-432d-882e-7e5d17e75eea
+    effea140-81d9-4322-9634-425419e867d2:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1110
+        'y': 870
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 905327e2-b7ec-4259-b8d4-25bb18c8d668
