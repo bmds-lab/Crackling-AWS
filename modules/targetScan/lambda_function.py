@@ -82,13 +82,7 @@ def find_targets(params):
             for targetTopic in [ISSL_SNS, CONSENSUS_SNS]:
                 msg = json.dumps(
                     {
-                        'default': json.dumps(
-                            {
-                                'jobid': params['JobID'],
-                                'sequence': target[0],
-                                'index': index
-                            }
-                        )
+                        'default': json.dumps(targetEntry)
                     }
                 )
             

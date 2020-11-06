@@ -1,11 +1,20 @@
-import json, joblib
-from sklearn.svm import SVC
+import json
+import boto3
+import os
+#import joblib
+#from sklearn.svm import SVC
 
-SGRNASCORER2_MODEL = joblib.load('/opt/model-py3.txt')
+#SGRNASCORER2_MODEL = joblib.load('/opt/model-py3.txt')
+
+
+targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
+dynamodb = boto3.resource('dynamodb')
+TARGETS_TABLE = dynamodb.Table(targets_table_name)
+
 
 def CalcConsensus(message):
-    seq = message['sequence']
-    consensus = [
+    seq = message['Sequence']
+    return [
         _CalcChopchop(seq),
         _CalcMm10db(seq),
         _CalcSgrnascorer(seq)
@@ -53,8 +62,10 @@ def _CalcSgrnascorer(seq):
         x += 1
 
     # predict based on the entry
-    prediction = SGRNASCORER2_MODEL.predict([entryList])
-    score = SGRNASCORER2_MODEL.decision_function([entryList])[0]
+    #prediction = SGRNASCORER2_MODEL.predict([entryList])
+    #score = SGRNASCORER2_MODEL.decision_function([entryList])[0]
+
+    score = 0
 
     return (float(score) >= 0)
 
@@ -74,7 +85,13 @@ def lambda_handler(event, context):
 
         consensus = CalcConsensus(message)
         
-        print(message['sequence'], consensus)
+        response = TARGETS_TABLE.update_item(
+            Key={'JobID': message['JobID'], 'TargetID': message['TargetID']},
+            UpdateExpression='set Consensus = :c',
+            ExpressionAttributeValues={':c': json.dumps(consensus)}
+        )
+        
+        print(message['Sequence'], consensus, response)
         
     return (event)
     
