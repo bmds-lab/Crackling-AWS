@@ -40,18 +40,17 @@ def CalcIssl(targets):
         )],
         shell = True
     )
-    
-    targetsScored = {}
+
     with open(tmpScored.name, 'r') as fp:
         for targetScored in [x.split('\t') for x in fp.readlines()]:
             if len(targetScored) == 2:
-                targetsScored[targetScored[0]] = float(targetScored[1].strip())
+                targets[targetScored[0]]['Score'] = float(targetScored[1].strip())
 
-    return targetsScored
+    return targets
     
 def lambda_handler(event, context):
-    targetsToScore = []
-    targetsScored = []
+    targetsToScore = {}
+    targetsScored = {}
     
     # score the targets in bulk first
     for record in event['Records']:
@@ -63,19 +62,29 @@ def lambda_handler(event, context):
                 if 'Message' in record['Sns']:
                     message = json.loads(record['Sns']['Message'])
         except e:
+            print(f"Exception: {e}")
             continue
             
-        targetsToScore.append(message['Sequence'])
+        targetsToScore[message['Sequence'][0:20]] = {
+            'JobID'     : message['JobID'],
+            'TargetID'  : message['TargetID'],
+            'Seq'       : message['Sequence'],
+            'Score'     : None,
+        }
             
-            
+   
+    print(f"Scoring {len(targetsToScore)} guides.")  
+    
     targetsScored = CalcIssl(targetsToScore)
     
     # now update the database with scores
-    for record in event['Records']:
+    for key in targetsScored:
+        result = targetsScored[key]
+        print(f"Updating table for guide #{result['TargetID']}")
         response = TARGETS_TABLE.update_item(
-            Key={'JobID': message['JobID'], 'TargetID': message['TargetID']},
+            Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set IsslScore = :score',
-            ExpressionAttributeValues={':score': json.dumps(targetsScored[message['Sequence'][0:20]])}
+            ExpressionAttributeValues={':score': json.dumps(result['Score'])}
         )
   
     return (event)

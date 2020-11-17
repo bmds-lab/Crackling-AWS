@@ -573,6 +573,9 @@ Resources:
       ContentUri: ../layers/isslIndexes/.
       Description: ISSL indexes
       LayerName: IsslIndexesLayer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 15e9975f-854d-428a-8025-1b70fd8a0e01
   ConsensusPython38PkgsLayer:
     Type: 'AWS::Serverless::LayerVersion'
     Properties:
@@ -612,8 +615,11 @@ Resources:
       CompatibleRuntimes:
         - python3.8
       ContentUri: ../layers/lib
-      Description: Libraries for compiled binaries 
+      Description: Libraries for compiled binaries
       LayerName: SharedObjectsLayer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: acc4716f-e9c9-40f5-86b8-abea8cb5cba2
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -665,19 +671,25 @@ Metadata:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
         height: 60
       position:
         x: 90
-        'y': 150
+        'y': 180
       z: 3
       parent: 1237aee6-1763-4764-8e61-cff47a07a281
       embeds: []
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
@@ -695,6 +707,9 @@ Metadata:
       parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
       embeds: []
       iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
@@ -744,6 +759,9 @@ Metadata:
       isassociatedwith:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
@@ -882,7 +900,7 @@ Metadata:
         height: 60
       position:
         x: 960
-        'y': 1550
+        'y': 1560
       z: 1
       embeds: []
     7418d3b1-5f2c-41ab-bbde-90ed5851e136:
@@ -900,7 +918,7 @@ Metadata:
         height: 60
       position:
         x: 630
-        'y': 1550
+        'y': 1560
       z: 1
       embeds: []
     b25105be-158e-4fc3-8e00-f656951de458:
@@ -918,7 +936,7 @@ Metadata:
         height: 60
       position:
         x: 810
-        'y': 1550
+        'y': 1560
       z: 1
       embeds: []
       isassociatedwith:
@@ -929,7 +947,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 270
+        x: 490
         'y': 1140
       z: 1
       embeds: []
@@ -983,7 +1001,7 @@ Metadata:
         height: 60
       position:
         x: 870
-        'y': 1390
+        'y': 1400
       z: 1
       embeds: []
     846e4476-0853-42d6-9cf8-b416ba475340:
@@ -1001,6 +1019,24 @@ Metadata:
         height: 60
       position:
         x: 870
+        'y': 1320
+      z: 1
+      embeds: []
+    acc4716f-e9c9-40f5-86b8-abea8cb5cba2:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 750
+        'y': 1140
+      z: 1
+      embeds: []
+    15e9975f-854d-428a-8025-1b70fd8a0e01:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 720
         'y': 1310
       z: 1
       embeds: []

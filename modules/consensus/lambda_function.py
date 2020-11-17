@@ -10,7 +10,7 @@ import ast
 from sklearn.svm import SVC
 from subprocess import call
 
-SGRNASCORER2_MODEL = joblib.load('/opt/model-py3.txt')
+SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
 
 call(f"cp -r /opt/rnaFold /tmp/rnaFold".split(' '))
 call(f"chmod -R 755 /tmp/rnaFold".split(' '))
@@ -26,9 +26,8 @@ TARGETS_TABLE = dynamodb.Table(targets_table_name)
 
 
 def caller(*args, **kwargs):
-    print(f"| Calling: {args}")
+    print(f"Calling: {args}")
     call(*args, **kwargs)
-    print(f"| Finished")
 
 
 # Function that replaces U with T in the sequence (to go back from RNA to DNA)
@@ -39,20 +38,18 @@ def transToDNA(rna):
 
 
 def CalcConsensus(records):
-    print('CalcConsensus')
     rnaFoldResults = _CalcRnaFold(records.keys())
     
     for record in records:
         records[record]['Consensus'] = [
-            _CalcChopchop(seq),
-            _CalcMm10db(seq, rnaFoldResults[record]['result']),
-            _CalcSgrnascorer(seq)
+            _CalcChopchop(record),
+            _CalcMm10db(record, rnaFoldResults[record]['result']),
+            _CalcSgrnascorer(record)
         ]
         
     return records
 
 def _CalcRnaFold(seqs):
-    print('_CalcRnaFold')
     results = {} # as output
 
     guide = "GUUUUAGAGCUAGAAAUAGCAAGUUAAAAUAAGGCUAGUCCGUUAUCAACUUGAAAAAGUGGCACCGAGUCGGUGCUUUU"
@@ -137,8 +134,6 @@ def _CalcRnaFold(seqs):
                         results[seq]['result'] = 1 # accept due to this reason
             i += 1
 
-    
-    print(results)
     return results
 
     
@@ -148,7 +143,7 @@ def _CalcChopchop(seq):
     '''
     return (seq[19] == 'G')
     
-def _CalcMm10db(seq):
+def _CalcMm10db(seq, rnaFoldResult):
     '''
     mm10db accepts guides that:
         - do not contain poly-thymine seqs (TTTT)
@@ -161,7 +156,7 @@ def _CalcMm10db(seq):
     return all([
         'TTTT' not in seq,
         (AT >= 0.20 and AT <= 0.65),
-        True
+        rnaFoldResult
     ])
     
 def _CalcSgrnascorer(seq):
@@ -186,11 +181,10 @@ def _CalcSgrnascorer(seq):
     # predict based on the entry
     prediction = SGRNASCORER2_MODEL.predict([entryList])
     score = SGRNASCORER2_MODEL.decision_function([entryList])[0]
-    print(f"Score: {score}")
+
     return (float(score) >= 0)
 
 def lambda_handler(event, context):
-    print('lambda_handler1')
     records = {}
     
     for record in event['Records']:
@@ -202,6 +196,7 @@ def lambda_handler(event, context):
                 if 'Message' in record['Sns']:
                     message = json.loads(record['Sns']['Message'])
         except e:
+            print(f"Exception: {e}")
             continue
             
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
@@ -213,22 +208,19 @@ def lambda_handler(event, context):
             'TargetID'  : message['TargetID'],
             'Consensus' : [],
         }
-        
-    print('lambda_handler2')
+       
+    print(f"Processing {len(records)} guides.")
+    
     results = CalcConsensus(records)
-    print('lambda_handler3')
     
     for key in results:
         result = results[key]
-        
-        print(result)
-        
+        print(f"Updating table for guide #{result['TargetID']}")
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
             ExpressionAttributeValues={':c': json.dumps(result['Consensus'])}
         )
         
-    print('lambda_handler4')
     return (event)
     
