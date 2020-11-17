@@ -1,4 +1,4 @@
 _*/*
 cloudformation/CracklingCloudFormation.yaml.packaged
-**/.venv/**
-**/package/**
+layers/consensusPy38Pkgs/*
+layers/isslIndexes

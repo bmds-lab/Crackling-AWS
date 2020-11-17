@@ -1,4 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
+Transform: 'AWS::Serverless-2016-10-31'
 Outputs:
   CracklingApi:
     Description: Crackling API endpoint
@@ -385,6 +386,11 @@ Resources:
       Environment:
         Variables:
           TARGETS_TABLE: !Ref TargetsTable
+      Layers:
+        - !Ref ConsensusPython38PkgsLayer
+        - !Ref Sgrnascorer2ModelLayer
+        - !Ref RnaFoldLayer
+        - !Ref SharedObjectsLayer
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 7418d3b1-5f2c-41ab-bbde-90ed5851e136
@@ -397,9 +403,9 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Action:
-                - 'sns:Subscribe'
-                - 'sns:Receive'
-                - 'sns:Unsubscribe'
+                  - 'sns:Subscribe'
+                  - 'sns:Receive'
+                  - 'sns:Unsubscribe'
                 Effect: Allow
                 Resource: !Ref ConsensusTopic
       ManagedPolicyArns:
@@ -431,6 +437,10 @@ Resources:
       Environment:
         Variables:
           TARGETS_TABLE: !Ref TargetsTable
+      Layers:
+        - !Ref IsslScoreOfftargetsLayer
+        - !Ref IsslIndexesLayer
+        - !Ref SharedObjectsLayer
     Metadata:
       'AWS::CloudFormation::Designer':
         id: b25105be-158e-4fc3-8e00-f656951de458
@@ -443,9 +453,9 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Action:
-                - 'sns:Subscribe'
-                - 'sns:Receive'
-                - 'sns:Unsubscribe'
+                  - 'sns:Subscribe'
+                  - 'sns:Receive'
+                  - 'sns:Unsubscribe'
                 Effect: Allow
                 Resource: !Ref IsslTopic
       ManagedPolicyArns:
@@ -462,7 +472,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 20780a16-27db-4134-8405-a329ce705b1b
-        
   UpdateTargetPolicy:
     Type: 'AWS::IAM::Policy'
     Properties:
@@ -544,6 +553,67 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: effea140-81d9-4322-9634-425419e867d2
+  IsslScoreOfftargetsLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/isslScoreOfftargets
+      Description: ISSL off-target scoring binary
+      LayerName: IsslScoreOfftargetsLayer
+      LicenseInfo: 'See https://github.com/bmds-lab/Crackling'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 846e4476-0853-42d6-9cf8-b416ba475340
+  IsslIndexesLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/isslIndexes/.
+      Description: ISSL indexes
+      LayerName: IsslIndexesLayer
+  ConsensusPython38PkgsLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/consensusPy38Pkgs/.
+      Description: Python3.8 packages for consensus Lambda function
+      LayerName: ConsensusPython38PkgsLayer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 67e81dd7-fcd5-4c2f-b58a-f82677d632b4
+  Sgrnascorer2ModelLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/sgrnascorer2Model
+      Description: The sgRnaScorer2 model
+      LayerName: Sgrnascorer2ModelLayer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 95084832-b17e-499d-a6b6-af3a55aeb9f2
+  RnaFoldLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/rnaFold
+      Description: The Vienna RnaFold binary
+      LayerName: RnaFoldLayer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 2b2450aa-e5ef-48c8-b449-af0592b493c5
+  SharedObjectsLayer:
+    Type: 'AWS::Serverless::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.8
+      ContentUri: ../layers/lib
+      Description: Libraries for compiled binaries 
+      LayerName: SharedObjectsLayer
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -591,6 +661,10 @@ Metadata:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
@@ -604,6 +678,10 @@ Metadata:
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
       dependson:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
     8a5ba4db-dc88-4861-87f4-c2ef066286aa:
@@ -618,6 +696,10 @@ Metadata:
       embeds: []
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
       dependson:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
     bfb8ab7d-a828-4dae-9daf-c8d3fc91fcd2:
@@ -626,7 +708,7 @@ Metadata:
         height: 60
       position:
         x: 120
-        'y': 890
+        'y': 900
       z: 1
       embeds: []
     7e5fdb7c-849e-477b-bd32-203183c47ca5:
@@ -643,7 +725,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 20
+        x: 30
         'y': 780
       z: 1
       embeds: []
@@ -663,6 +745,10 @@ Metadata:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     7264d5d4-f58a-4769-bde3-7796cdfa22e5:
       size:
         width: 60
@@ -677,7 +763,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 220
+        x: 210
         'y': 630
       z: 1
       embeds: []
@@ -686,7 +772,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 230
+        x: 240
         'y': 780
       z: 1
       embeds: []
@@ -695,8 +781,8 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 230
-        'y': 890
+        x: 240
+        'y': 900
       z: 1
       embeds: []
       isassociatedwith:
@@ -744,7 +830,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 340
+        x: 330
         'y': 780
       z: 1
       embeds: []
@@ -796,7 +882,7 @@ Metadata:
         height: 60
       position:
         x: 960
-        'y': 1230
+        'y': 1550
       z: 1
       embeds: []
     7418d3b1-5f2c-41ab-bbde-90ed5851e136:
@@ -814,7 +900,7 @@ Metadata:
         height: 60
       position:
         x: 630
-        'y': 1230
+        'y': 1550
       z: 1
       embeds: []
     b25105be-158e-4fc3-8e00-f656951de458:
@@ -832,7 +918,7 @@ Metadata:
         height: 60
       position:
         x: 810
-        'y': 1230
+        'y': 1550
       z: 1
       embeds: []
       isassociatedwith:
@@ -843,7 +929,7 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 280
+        x: 270
         'y': 1140
       z: 1
       embeds: []
@@ -882,3 +968,39 @@ Metadata:
       embeds: []
       isassociatedwith:
         - 905327e2-b7ec-4259-b8d4-25bb18c8d668
+    95084832-b17e-499d-a6b6-af3a55aeb9f2:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 870
+        'y': 1230
+      z: 1
+      embeds: []
+    67e81dd7-fcd5-4c2f-b58a-f82677d632b4:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 870
+        'y': 1390
+      z: 1
+      embeds: []
+    846e4476-0853-42d6-9cf8-b416ba475340:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 720
+        'y': 1230
+      z: 1
+      embeds: []
+    2b2450aa-e5ef-48c8-b449-af0592b493c5:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 870
+        'y': 1310
+      z: 1
+      embeds: []

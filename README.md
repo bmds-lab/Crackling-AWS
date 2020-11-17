@@ -36,7 +36,24 @@ Please refer to our paper when using Crackling:
 
 ## Deployment
 
+Collect all shared objects needed by compiled binaries.
+
+See here: https://www.commandlinefu.com/commands/view/10238/copy-all-shared-libraries-for-a-binary-to-directory
+
+```
+ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
+
+ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
+```
+
 ### Consensus
+
+```
+py -3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
+```
+
+
+
 
 The consensus module has Python dependencies that need to be installed.
 
