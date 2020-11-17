@@ -271,14 +271,6 @@ Resources:
             Resource: !Sub >-
               arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${JobsTable}/stream/*
             Sid: Stmt5747548
-          - Action:
-              - 'SNS:Publish'
-            Effect: Allow
-            Resource: !Ref ConsensusTopic
-          - Action:
-              - 'SNS:Publish'
-            Effect: Allow
-            Resource: !Ref IsslTopic
       Roles:
         - !Ref TargetScanRole
     Metadata:
@@ -319,8 +311,6 @@ Resources:
         Variables:
           STACK_NAME: !Ref 'AWS::StackName'
           TARGETS_TABLE: !Ref TargetsTable
-          CONSENSUS_TOPIC: !Ref ConsensusTopic
-          ISSL_TOPIC: !Ref IsslTopic
     Metadata:
       'AWS::CloudFormation::Designer':
         id: ddfc2f07-2c3e-42c1-90b7-73771be6a243
@@ -339,38 +329,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 1cf9d574-dd2f-401c-afe0-fd12bc830245
-  ConsensusTopic:
-    Type: 'AWS::SNS::Topic'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 905327e2-b7ec-4259-b8d4-25bb18c8d668
-  IsslTopic:
-    Type: 'AWS::SNS::Topic'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 74c74516-a10f-432d-882e-7e5d17e75eea
-  ConsensusSubscription:
-    Type: 'AWS::SNS::Subscription'
-    Properties:
-      Endpoint: !GetAtt 
-        - ConsensusFunction
-        - Arn
-      Protocol: lambda
-      TopicArn: !Ref ConsensusTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 3fab93bb-bb1b-404a-865b-2270fafb020a
-  IsslSubscription:
-    Type: 'AWS::SNS::Subscription'
-    Properties:
-      Endpoint: !GetAtt 
-        - IsslFunction
-        - Arn
-      Protocol: lambda
-      TopicArn: !Ref IsslTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 906cd53d-1c3c-4d85-b2bd-d480d870d83f
   ConsensusFunction:
     Type: 'AWS::Lambda::Function'
     Properties:
@@ -397,17 +355,6 @@ Resources:
   ConsensusRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      Policies:
-        - PolicyName: LambdaPolicy
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Action:
-                  - 'sns:Subscribe'
-                  - 'sns:Receive'
-                  - 'sns:Unsubscribe'
-                Effect: Allow
-                Resource: !Ref ConsensusTopic
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       AssumeRolePolicyDocument:
@@ -447,17 +394,6 @@ Resources:
   IsslRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      Policies:
-        - PolicyName: LambdaPolicy
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Action:
-                  - 'sns:Subscribe'
-                  - 'sns:Receive'
-                  - 'sns:Unsubscribe'
-                Effect: Allow
-                Resource: !Ref IsslTopic
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       AssumeRolePolicyDocument:
@@ -491,68 +427,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 79eb6c99-bb5a-4037-8020-dac91ee146b3
-  IsslInvokePermission:
-    Type: 'AWS::Lambda::Permission'
-    Properties:
-      Action: 'lambda:InvokeFunction'
-      FunctionName: !GetAtt 
-        - IsslFunction
-        - Arn
-      Principal: sns.amazonaws.com
-      SourceArn: !Ref IsslTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: a8557da8-2b52-49d7-9903-e62816cb32d7
-  ConsensusInvokePermission:
-    Type: 'AWS::Lambda::Permission'
-    Properties:
-      Action: 'lambda:InvokeFunction'
-      FunctionName: !GetAtt 
-        - ConsensusFunction
-        - Arn
-      Principal: sns.amazonaws.com
-      SourceArn: !Ref ConsensusTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 9de87f36-0e31-4f60-b9f9-25a8ca9a46b7
-  IsslTopicPolicy:
-    Type: 'AWS::SNS::TopicPolicy'
-    Properties:
-      PolicyDocument:
-        Id: IsslTopicPolicy
-        Version: 2012-10-17
-        Statement:
-          - Sid: Sid1
-            Effect: Allow
-            Principal:
-              Service:
-                - sns.amazonaws.com
-            Action: 'sns:Publish'
-            Resource: !Ref IsslTopic
-      Topics:
-        - !Ref IsslTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: ed86b54b-3163-4d07-a72c-7399c6b8d918
-  ConsensusTopicPolicy:
-    Type: 'AWS::SNS::TopicPolicy'
-    Properties:
-      PolicyDocument:
-        Id: IsslTopicPolicy
-        Version: 2012-10-17
-        Statement:
-          - Sid: Sid1
-            Effect: Allow
-            Principal:
-              Service:
-                - sns.amazonaws.com
-            Action: 'sns:Publish'
-            Resource: !Ref ConsensusTopic
-      Topics:
-        - !Ref ConsensusTopic
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: effea140-81d9-4322-9634-425419e867d2
   IsslScoreOfftargetsLayer:
     Type: 'AWS::Serverless::LayerVersion'
     Properties:
@@ -620,6 +494,100 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: acc4716f-e9c9-40f5-86b8-abea8cb5cba2
+  DdbFanEventSourceMapping:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn: !GetAtt 
+        - TargetsTable
+        - StreamArn
+      FunctionName: !GetAtt 
+        - DdbFanFunction
+        - Arn
+      StartingPosition: TRIM_HORIZON
+    DependsOn:
+      - DdbFanPolicy
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 654b6ca8-6bea-4939-ad6e-dcb6d2c40788
+  DdbFanFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code: ../modules/ddbFan/lambda_function.py
+      Description: Fan-out batch jobs from targets table
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt 
+        - DdbFanRole
+        - Arn
+      Runtime: python3.8
+      Environment:
+        Variables:
+          STACK_NAME: !Ref 'AWS::StackName'
+          TARGETS_TABLE: !Ref TargetsTable
+          ISSL_LAMBDA: !Ref IsslFunction
+          CONSENSUS_LAMBDA: !Ref ConsensusFunction
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: e87ee461-48b2-46de-93d2-b5c3b9cc2326
+  DdbFanRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: eb3850ab-ccdc-43a2-9579-47dd134bd7a4
+  DdbFanPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: DdbFanPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'dynamodb:PutItem'
+              - 'dynamodb:BatchWriteItem'
+              - 'dynamodb:Query'
+            Effect: Allow
+            Resource: !GetAtt 
+              - TargetsTable
+              - Arn
+          - Action:
+              - 'lambda:InvokeFunction'
+            Effect: Allow
+            Resource: !GetAtt 
+              - IsslFunction
+              - Arn
+          - Action:
+              - 'lambda:InvokeFunction'
+            Effect: Allow
+            Resource: !GetAtt 
+              - ConsensusFunction
+              - Arn
+          - Action:
+              - 'dynamodb:DescribeStream'
+              - 'dynamodb:GetRecords'
+              - 'dynamodb:GetShardIterator'
+              - 'dynamodb:ListStreams'
+            Effect: Allow
+            Resource: !Sub >-
+              arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TargetsTable}/stream/*
+            Sid: Stmt5747548
+      Roles:
+        - !Ref DdbFanRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 2c45ec3a-c22a-4742-b149-3dafc3959fd0
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:
@@ -668,12 +636,6 @@ Metadata:
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
@@ -688,12 +650,6 @@ Metadata:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 1237aee6-1763-4764-8e61-cff47a07a281
       dependson:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
     8a5ba4db-dc88-4861-87f4-c2ef066286aa:
@@ -707,12 +663,6 @@ Metadata:
       parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
       embeds: []
       iscontainedinside:
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
       dependson:
@@ -759,12 +709,6 @@ Metadata:
       isassociatedwith:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
-        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
     7264d5d4-f58a-4769-bde3-7796cdfa22e5:
@@ -854,46 +798,6 @@ Metadata:
       embeds: []
       dependson:
         - 9a137981-a570-41e7-bba0-3d05f58520a1
-    905327e2-b7ec-4259-b8d4-25bb18c8d668:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 960
-        'y': 870
-      z: 1
-      embeds: []
-    3fab93bb-bb1b-404a-865b-2270fafb020a:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 960
-        'y': 990
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 905327e2-b7ec-4259-b8d4-25bb18c8d668
-    74c74516-a10f-432d-882e-7e5d17e75eea:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 630
-        'y': 870
-      z: 1
-      embeds: []
-    906cd53d-1c3c-4d85-b2bd-d480d870d83f:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 630
-        'y': 990
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 74c74516-a10f-432d-882e-7e5d17e75eea
     0a474368-1a81-4e15-99c3-58bad70cb460:
       size:
         width: 60
@@ -942,50 +846,6 @@ Metadata:
       isassociatedwith:
         - 0a474368-1a81-4e15-99c3-58bad70cb460
         - 20780a16-27db-4134-8405-a329ce705b1b
-    a8557da8-2b52-49d7-9903-e62816cb32d7:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 490
-        'y': 1140
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - b25105be-158e-4fc3-8e00-f656951de458
-    9de87f36-0e31-4f60-b9f9-25a8ca9a46b7:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 1110
-        'y': 1140
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 7418d3b1-5f2c-41ab-bbde-90ed5851e136
-    ed86b54b-3163-4d07-a72c-7399c6b8d918:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 510
-        'y': 870
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 74c74516-a10f-432d-882e-7e5d17e75eea
-    effea140-81d9-4322-9634-425419e867d2:
-      size:
-        width: 60
-        height: 60
-      position:
-        x: 1110
-        'y': 870
-      z: 1
-      embeds: []
-      isassociatedwith:
-        - 905327e2-b7ec-4259-b8d4-25bb18c8d668
     95084832-b17e-499d-a6b6-af3a55aeb9f2:
       size:
         width: 60
@@ -1001,7 +861,7 @@ Metadata:
         height: 60
       position:
         x: 870
-        'y': 1400
+        'y': 1410
       z: 1
       embeds: []
     846e4476-0853-42d6-9cf8-b416ba475340:
@@ -1037,6 +897,47 @@ Metadata:
         height: 60
       position:
         x: 720
-        'y': 1310
+        'y': 1320
       z: 1
       embeds: []
+    eb3850ab-ccdc-43a2-9579-47dd134bd7a4:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1290
+        'y': 1050
+      z: 1
+      embeds: []
+    e87ee461-48b2-46de-93d2-b5c3b9cc2326:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1140
+        'y': 1050
+      z: 1
+      embeds: []
+    654b6ca8-6bea-4939-ad6e-dcb6d2c40788:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1140
+        'y': 930
+      z: 1
+      embeds: []
+      dependson:
+        - 9a137981-a570-41e7-bba0-3d05f58520a1
+        - 2c45ec3a-c22a-4742-b149-3dafc3959fd0
+    2c45ec3a-c22a-4742-b149-3dafc3959fd0:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 1140
+        'y': 830
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - eb3850ab-ccdc-43a2-9579-47dd134bd7a4

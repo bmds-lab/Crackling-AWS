@@ -56,15 +56,31 @@ def lambda_handler(event, context):
     for record in event['Records']:
     
         message = None
-    
+        
         try:
-            if 'Sns' in record:
-                if 'Message' in record['Sns']:
-                    message = json.loads(record['Sns']['Message'])
-        except e:
+            if 'dynamodb' in record:
+                if 'NewImage' in record['dynamodb']:
+                    message = record['dynamodb']['NewImage']
+        except Exception as e:
             print(f"Exception: {e}")
             continue
-            
+        
+        if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
+            print(f'Missing core data to perform consensus: {message}')
+            continue
+          
+        # e.g. {
+        #   'Count': {'N': '1'}, 
+        #   'Sequence': {'S': 'ATCGATCGATCGATCGATCGAGG'}, 
+        #   'JobID': {'S': '28653200-2afb-4d19-8369-545ff606f6f1'}, 
+        #   'TargetID': {'N': '0'}
+        # }
+        t = {'S' : str, 'N' : int} # transforms
+        f = {'Count' : 'N', 'Sequence' : 'S', 'JobID' : 'S', 'TargetID' : 'N'} # fields
+        messageNew = {k : t[f[k]](message[k][f[k]]) for k in f}
+
+        message = messageNew
+          
         targetsToScore[message['Sequence'][0:20]] = {
             'JobID'     : message['JobID'],
             'TargetID'  : message['TargetID'],

@@ -79,20 +79,20 @@ def find_targets(params):
             
             batch.put_item(Item=targetEntry)
             
-            for targetTopic in [ISSL_SNS, CONSENSUS_SNS]:
-                msg = json.dumps(
-                    {
-                        'default': json.dumps(targetEntry)
-                    }
-                )
-            
-                response = snsClient.publish(
-                    TargetArn=targetTopic,
-                    Message=msg,
-                    MessageStructure='json'
-                )
-                
-                print(targetTopic, response, msg)
+            #for targetTopic in [ISSL_SNS, CONSENSUS_SNS]:
+            #    msg = json.dumps(
+            #        {
+            #            'default': json.dumps(targetEntry)
+            #        }
+            #    )
+            #
+            #    response = snsClient.publish(
+            #        TargetArn=targetTopic,
+            #        Message=msg,
+            #        MessageStructure='json'
+            #    )
+            #    
+            #    print(targetTopic, response, msg)
 
 
 def deleteCandidateTargets(jobid):
