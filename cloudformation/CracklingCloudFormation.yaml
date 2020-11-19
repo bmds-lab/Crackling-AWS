@@ -49,7 +49,8 @@ Resources:
     Properties:
       RestApiId: !Ref CracklingRestApi
     DependsOn:
-      - PostSubmitJob
+      - SubmitJobMethod
+      - GetTargetsMethod
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 8a5ba4db-dc88-4861-87f4-c2ef066286aa
@@ -65,7 +66,7 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 1237aee6-1763-4764-8e61-cff47a07a281
-  PostSubmitJob:
+  SubmitJobMethod:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       AuthorizationType: NONE
@@ -90,6 +91,89 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 20c69c84-7828-4853-8398-b77a31dbe46b
+  ResultsResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt 
+        - CracklingRestApi
+        - RootResourceId
+      PathPart: results
+      RestApiId: !Ref CracklingRestApi
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9180788b-6adb-40b4-b61a-cc508edc5b79
+  ResultsJobResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !Ref ResultsResource
+      PathPart: '{jobid}'
+      RestApiId: !Ref CracklingRestApi
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 56e501fd-f9d6-44c0-a54b-6eac7891ed90
+  ResultsTargetResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !Ref ResultsJobResource
+      PathPart: targets
+      RestApiId: !Ref CracklingRestApi
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+  GetTargetsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        Credentials: !GetAtt 
+          - ApiProxyRole
+          - Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - ResponseTemplates:
+              application/json: |-
+                #set($allTargs = $input.path('$.Items'))
+                {
+                "recordsTotal": $allTargs.size(),
+                "data" : [
+                #foreach($targ in $allTargs)
+                  {
+                    "Sequence": "$targ.Sequence.S",
+                    "Consensus": "$targ.Consensus.S",
+                    "IsslScore": "$targ.IsslScore.S",
+                  }#if($foreach.hasNext),#end
+                #end
+                ]
+                }
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+            StatusCode: 200
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        RequestTemplates:
+          application/json: !Sub |-
+            {
+                "TableName": "${TargetsTable}",
+                "KeyConditionExpression": "JobID = :v1",
+                "ExpressionAttributeValues": {
+                    ":v1": {
+                        "S": "$input.params('jobid')"
+                    }
+                }
+            }
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:dynamodb:action/Query'
+      MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+          StatusCode: 200
+      ResourceId: !Ref ResultsTargetResource
+      RestApiId: !Ref CracklingRestApi
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b21304cf-1263-43b2-be51-06b8451b8758
   ApiProxyPolicy:
     Properties:
       PolicyDocument:
@@ -384,6 +468,7 @@ Resources:
       Environment:
         Variables:
           TARGETS_TABLE: !Ref TargetsTable
+          JOBS_TABLE: !Ref JobsTable
       Layers:
         - !Ref IsslScoreOfftargetsLayer
         - !Ref IsslIndexesLayer
@@ -419,6 +504,15 @@ Resources:
             Effect: Allow
             Resource: !GetAtt 
               - TargetsTable
+              - Arn
+          - Action:
+              - 'dynamodb:GetRecords'
+              - 'dynamodb:GetItem'
+              - 'dynamodb:BatchGetItem'
+              - 'dynamodb:Query'
+            Effect: Allow
+            Resource: !GetAtt 
+              - JobsTable
               - Arn
         Version: 2012-10-17
       Roles:
@@ -612,23 +706,24 @@ Metadata:
         - 1ccb6ce5-114b-40aa-86e0-bab2d9469bb7
     cec9eb71-520d-4c8e-b49d-6707666e37c7:
       size:
-        width: 690
-        height: 510
+        width: 660
+        height: 490
       position:
         x: 60
-        'y': 90
+        'y': 110
       z: 1
       embeds:
+        - 9180788b-6adb-40b4-b61a-cc508edc5b79
+        - 56e501fd-f9d6-44c0-a54b-6eac7891ed90
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125
         - 1237aee6-1763-4764-8e61-cff47a07a281
-        - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
-        - fa21bebf-4f0a-46de-b488-ed609ec4515c
     1237aee6-1763-4764-8e61-cff47a07a281:
       size:
-        width: 240
-        height: 180
+        width: 150
+        height: 160
       position:
-        x: 60
-        'y': 120
+        x: 80
+        'y': 160
       z: 2
       parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
       embeds:
@@ -636,19 +731,29 @@ Metadata:
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
     20c69c84-7828-4853-8398-b77a31dbe46b:
       size:
         width: 60
         height: 60
       position:
-        x: 90
-        'y': 180
+        x: 110
+        'y': 220
       z: 3
       parent: 1237aee6-1763-4764-8e61-cff47a07a281
       embeds: []
       iscontainedinside:
         - 1237aee6-1763-4764-8e61-cff47a07a281
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
+        - 1237aee6-1763-4764-8e61-cff47a07a281
         - 1237aee6-1763-4764-8e61-cff47a07a281
       dependson:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
@@ -657,16 +762,18 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 450
-        'y': 180
-      z: 2
-      parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
+        x: -40
+        'y': 190
+      z: 1
       embeds: []
       iscontainedinside:
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
       dependson:
         - 20c69c84-7828-4853-8398-b77a31dbe46b
+        - b21304cf-1263-43b2-be51-06b8451b8758
     bfb8ab7d-a828-4dae-9daf-c8d3fc91fcd2:
       size:
         width: 60
@@ -701,14 +808,15 @@ Metadata:
         width: 60
         height: 60
       position:
-        x: 330
-        'y': 150
-      z: 2
-      parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
+        x: -40
+        'y': 320
+      z: 1
       embeds: []
       isassociatedwith:
         - 8a5ba4db-dc88-4861-87f4-c2ef066286aa
       iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
         - cec9eb71-520d-4c8e-b49d-6707666e37c7
     7264d5d4-f58a-4769-bde3-7796cdfa22e5:
@@ -936,8 +1044,74 @@ Metadata:
         height: 60
       position:
         x: 1140
-        'y': 830
+        'y': 840
       z: 1
       embeds: []
       isassociatedwith:
         - eb3850ab-ccdc-43a2-9579-47dd134bd7a4
+    9180788b-6adb-40b4-b61a-cc508edc5b79:
+      size:
+        width: 140
+        height: 140
+      position:
+        x: 480
+        'y': 370
+      z: 2
+      parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
+      embeds: []
+      iscontainedinside:
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+    56e501fd-f9d6-44c0-a54b-6eac7891ed90:
+      size:
+        width: 160
+        height: 110
+      position:
+        x: 290
+        'y': 370
+      z: 2
+      parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
+      embeds: []
+      iscontainedinside:
+        - 9180788b-6adb-40b4-b61a-cc508edc5b79
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 9180788b-6adb-40b4-b61a-cc508edc5b79
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+    c7a2ad45-bfee-4e6b-a5a5-127f4da82125:
+      size:
+        width: 160
+        height: 160
+      position:
+        x: 290
+        'y': 160
+      z: 2
+      parent: cec9eb71-520d-4c8e-b49d-6707666e37c7
+      embeds:
+        - b21304cf-1263-43b2-be51-06b8451b8758
+      iscontainedinside:
+        - 56e501fd-f9d6-44c0-a54b-6eac7891ed90
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - 56e501fd-f9d6-44c0-a54b-6eac7891ed90
+        - 56e501fd-f9d6-44c0-a54b-6eac7891ed90
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+    b21304cf-1263-43b2-be51-06b8451b8758:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 340
+        'y': 210
+      z: 3
+      parent: c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+      embeds: []
+      iscontainedinside:
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+        - cec9eb71-520d-4c8e-b49d-6707666e37c7
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125
+        - c7a2ad45-bfee-4e6b-a5a5-127f4da82125

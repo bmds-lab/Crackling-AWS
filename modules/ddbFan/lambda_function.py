@@ -16,11 +16,15 @@ def lambda_handler(event, context):
 
     results = []
 
+    #print(event)
+    inserts =[r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
+    #print(inserts)
     for func in [CONSENSUS_LAMBDA, ISSL_LAMBDA]:
+        print("Invoking: ", func, inserts)
         r = lambdaClient.invoke(
             FunctionName = func,
             InvocationType = 'Event',
-            Payload = json.dumps(event)
+            Payload = json.dumps(inserts)
         )
         
         results.append(r)

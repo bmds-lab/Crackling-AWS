@@ -187,24 +187,24 @@ def _CalcSgrnascorer(seq):
 def lambda_handler(event, context):
     records = {}
     
-    for record in event['Records']:
+    for message in event:
     
-        message = None
-        print(record)
-        try:
-            if 'dynamodb' in record:
-                if 'NewImage' in record['dynamodb']:
-                    message = record['dynamodb']['NewImage']
-        except Exception as e:
-            print(f"Exception: {e}")
-            continue
-        
-        print(message)
+        #message = None
+        #print(record)
+        #try:
+        #    if 'dynamodb' in record:
+        #        if 'NewImage' in record['dynamodb']:
+        #            message = record['dynamodb']['NewImage']
+        #except Exception as e:
+        #    print(f"Exception: {e}")
+        #    continue
+        #
         
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
             print(f'Missing core data to perform consensus: {message}')
             continue
 
+        print(message)
         # e.g. {
         #   'Count': {'N': '1'}, 
         #   'Sequence': {'S': 'ATCGATCGATCGATCGATCGAGG'}, 
@@ -229,7 +229,7 @@ def lambda_handler(event, context):
     
     for key in results:
         result = results[key]
-        print(f"Updating table for guide #{result['TargetID']}")
+        print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}")
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
