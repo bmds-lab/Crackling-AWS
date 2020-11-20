@@ -64,7 +64,6 @@ def target_iterator(seq):
                     possibleTargets[target23] = 1 
     
     for possibleTarget in possibleTargets:
-        print(possibleTarget)
         if possibleTargets[possibleTarget] != 1:
             continue
         yield (possibleTarget, possibleTargets[possibleTarget])
@@ -74,7 +73,6 @@ def target_iterator(seq):
 def find_targets(params):
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
-            print(index, target)
             targetEntry = create_target_entry(params, index, target)
             
             batch.put_item(Item=targetEntry)
@@ -92,7 +90,13 @@ def find_targets(params):
                     MessageStructure='json'
                 )
                 
-                print(targetTopic, response, msg)
+                print(
+                    index, 
+                    target,
+                    targetTopic.split(':')[5], 
+                    response['ResponseMetadata']['HTTPStatusCode'], 
+                    msg
+                )
 
 
 def deleteCandidateTargets(jobid):

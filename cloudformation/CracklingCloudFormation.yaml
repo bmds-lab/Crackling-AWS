@@ -50,6 +50,7 @@ Resources:
       RestApiId: !Ref CracklingRestApi
     DependsOn:
       - PostSubmitJob
+      - GetTargetsMethod
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 8a5ba4db-dc88-4861-87f4-c2ef066286aa
@@ -90,6 +91,77 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 20c69c84-7828-4853-8398-b77a31dbe46b
+  ResultsResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt 
+        - CracklingRestApi
+        - RootResourceId
+      PathPart: results
+      RestApiId: !Ref CracklingRestApi
+  ResultsJobResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !Ref ResultsResource
+      PathPart: '{jobid}'
+      RestApiId: !Ref CracklingRestApi
+  ResultsTargetResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !Ref ResultsJobResource
+      PathPart: targets
+      RestApiId: !Ref CracklingRestApi
+  GetTargetsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        Credentials: !GetAtt 
+          - ApiProxyRole
+          - Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - ResponseTemplates:
+              application/json: |-
+                #set($allTargs = $input.path('$.Items'))
+                {
+                "recordsTotal": $allTargs.size(),
+                "data" : [
+                #foreach($targ in $allTargs)
+                  {
+                    "Sequence": "$targ.Sequence.S",
+                    "Consensus": "$targ.Consensus.S",
+                    "IsslScore": "$targ.IsslScore.S",
+                  }#if($foreach.hasNext),#end
+                #end
+                ]
+                }
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+            StatusCode: 200
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        RequestTemplates:
+          application/json: !Sub |-
+            {
+                "TableName": "${TargetsTable}",
+                "KeyConditionExpression": "JobID = :v1",
+                "ExpressionAttributeValues": {
+                    ":v1": {
+                        "S": "$input.params('jobid')"
+                    }
+                }
+            }
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:dynamodb:action/Query'
+      MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+          StatusCode: 200
+      ResourceId: !Ref ResultsTargetResource
+      RestApiId: !Ref CracklingRestApi
   ApiProxyPolicy:
     Properties:
       PolicyDocument:
@@ -437,6 +509,7 @@ Resources:
       Environment:
         Variables:
           TARGETS_TABLE: !Ref TargetsTable
+          JOBS_TABLE: !Ref JobsTable
       Layers:
         - !Ref IsslScoreOfftargetsLayer
         - !Ref IsslIndexesLayer
@@ -483,6 +556,15 @@ Resources:
             Effect: Allow
             Resource: !GetAtt 
               - TargetsTable
+              - Arn
+          - Action:
+              - 'dynamodb:GetRecords'
+              - 'dynamodb:GetItem'
+              - 'dynamodb:BatchGetItem'
+              - 'dynamodb:Query'
+            Effect: Allow
+            Resource: !GetAtt 
+              - JobsTable
               - Arn
         Version: 2012-10-17
       Roles:

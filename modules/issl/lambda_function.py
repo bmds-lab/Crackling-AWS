@@ -8,31 +8,38 @@ call(f"cp -r /opt/isslScoreOfftargets /tmp/isslScoreOfftargets".split(' '))
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
-OFFTARGETS_INDEX = r"/opt/Test200000_E_coli_offTargets_20.fa.sorted.issl"
+OFFTARGETS_INDEX_MAP = {
+    'Test100000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test100000_E_coli_offTargets_20.fa.sorted.issl",
+    'Test200000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test200000_E_coli_offTargets_20.fa.sorted.issl"
+}
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
-dynamodb = boto3.resource('dynamodb')
-TARGETS_TABLE = dynamodb.Table(targets_table_name)
+jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 
+dynamodb = boto3.resource('dynamodb')
+dynamodb_client = boto3.client('dynamodb')
+
+TARGETS_TABLE = dynamodb.Table(targets_table_name)
+JOBS_TABLE = dynamodb.Table(jobs_table_name)
 
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
     call(*args, **kwargs)
     
-def CalcIssl(targets):
+def CalcIssl(targets, genome):
     tmpToScore = tempfile.NamedTemporaryFile('w', delete=False)
     tmpScored = tempfile.NamedTemporaryFile('w', delete=False)
 
     # write the candidate guides to file
     with open(tmpToScore.name, 'w+') as fp:
-        fp.write("\n".join([x[0:20] for x in targets]))
+        fp.write("\n".join([targets[x]['Seq20'] for x in targets]))
         fp.write("\n")
 
     # call the scoring method
     caller(
         ["{} \"{}\" \"{}\" \"{}\" \"{}\" > \"{}\"".format(
             BIN_ISSL_SCORER,
-            OFFTARGETS_INDEX,
+            OFFTARGETS_INDEX_MAP[genome],
             tmpToScore.name,
             '4',
             '75',
@@ -49,43 +56,104 @@ def CalcIssl(targets):
     return targets
     
 def lambda_handler(event, context):
-    targetsToScore = {}
+    # key: genome, value: list of guides
+    targetsToScorePerGenome = {}
+    
+    # key: genome, value: list of dict
     targetsScored = {}
     
+    # key: JobID, value: genome
+    jobToGenomeMap = {}
+    
     # score the targets in bulk first
+    message = None
+    print(event)
+    
+    # SNS only pushes one message at time, so this for-loop is useless
+    # tho still worthwhile in preparation for an architecture that can send
+    # messages in batches (for example, via a DynamoDB stream)
+    # but I'm out of time to finish that implemetation (there is a commit
+    # in the repo where this is implemented, but functioning incorrectly [stuck
+    # in a invocation loop])
     for record in event['Records']:
-    
-        message = None
-    
+        print(record)
         try:
             if 'Sns' in record:
                 if 'Message' in record['Sns']:
                     message = json.loads(record['Sns']['Message'])
-        except e:
+        except Exception as e:
             print(f"Exception: {e}")
+
+        if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
+            print(f'Missing core data to perform off-target scoring: {message}')
             continue
             
-        targetsToScore[message['Sequence'][0:20]] = {
-            'JobID'     : message['JobID'],
+        print(message)
+        
+        # Transform the nested dict structure from Boto3 into something more
+        # ideal, imo.
+        # This is only needed if the payload is passed from a Lambda function.
+        # SNS gives it to us in the "ideal" format already.
+        # e.g. {
+        #   'Count': {'N': '1'}, 
+        #   'Sequence': {'S': 'ATCGATCGATCGATCGATCGAGG'}, 
+        #   'JobID': {'S': '28653200-2afb-4d19-8369-545ff606f6f1'}, 
+        #   'TargetID': {'N': '0'}
+        # }
+        #t = {'S' : str, 'N' : int} # transforms
+        #f = {'Count' : 'N', 'Sequence' : 'S', 'JobID' : 'S', 'TargetID' : 'N'} # fields
+        #temp = {k : t[f[k]](message[k][f[k]]) for k in f}
+        #message = temp
+ 
+        jobId = message['JobID']
+            
+        if jobId not in jobToGenomeMap:
+            print(f"JobID {jobId} not in job -> genome map.")
+            # Fetch the job information so it is known which genome to use
+            result = dynamodb_client.get_item(
+                TableName = jobs_table_name,
+                Key = {
+                    'JobID' : {'S' : jobId}
+                }
+            )
+            print(result)
+            if 'Item' in result:
+                genome = result['Item']['Genome']['S']
+                
+                jobToGenomeMap[jobId] = genome
+                targetsToScorePerGenome[genome] = {}
+                
+                print(jobId, genome)
+            else:
+                print(f'No matching JobID: {jobId}???')
+        else:  
+            print(f"JobID {jobId} already in job -> genome map.")
+          
+        # key: genome, value: list of guides
+        seq20 = message['Sequence'][0:20]
+        targetsToScorePerGenome[jobToGenomeMap[jobId]][seq20] = {
+            'JobID'     : jobId,
             'TargetID'  : message['TargetID'],
             'Seq'       : message['Sequence'],
+            'Seq20'     : seq20,
             'Score'     : None,
         }
-            
-   
-    print(f"Scoring {len(targetsToScore)} guides.")  
+
+    print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ")
+    print([len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
     
-    targetsScored = CalcIssl(targetsToScore)
+    for genome in targetsToScorePerGenome:
+        # key: genome, value: list of dict
+        targetsScored = CalcIssl(targetsToScorePerGenome[genome], genome)
     
-    # now update the database with scores
-    for key in targetsScored:
-        result = targetsScored[key]
-        print(f"Updating table for guide #{result['TargetID']}")
-        response = TARGETS_TABLE.update_item(
-            Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
-            UpdateExpression='set IsslScore = :score',
-            ExpressionAttributeValues={':score': json.dumps(result['Score'])}
-        )
+        # now update the database with scores
+        for key in targetsScored:
+            result = targetsScored[key]
+            print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}")
+            response = TARGETS_TABLE.update_item(
+                Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
+                UpdateExpression='set IsslScore = :score',
+                ExpressionAttributeValues={':score': json.dumps(result['Score'])}
+            )
   
     return (event)
-    

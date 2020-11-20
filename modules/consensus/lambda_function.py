@@ -186,7 +186,7 @@ def _CalcSgrnascorer(seq):
 
 def lambda_handler(event, context):
     records = {}
-    
+    print(event)
     for record in event['Records']:
     
         message = None
