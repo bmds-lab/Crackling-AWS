@@ -4,12 +4,12 @@ from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
-CONSENSUS_SNS = os.getenv('CONSENSUS_TOPIC')
-ISSL_SNS = os.getenv('ISSL_TOPIC')
+CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
+ISSL_SQS = os.getenv('ISSL_QUEUE')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
-snsClient = boto3.client('sns')
+sqsClient = boto3.client('sqs')
 
 # Function that returns the reverse-complement of a given sequence
 def rc(dna):
@@ -27,17 +27,12 @@ def clean_candidate_sequence(rawsequence):
 def create_target_entry(params, index, target):
     entry = {
         'JobID': params['JobID'],
-        #'Chromosome': params['Chromosome'],
-        #'Location': int(params['Location']) + target[1],
         'TargetID': index,
-        'Sequence': target[0],
-        'Count': target[1],
-        #'Adjacent': target[4][0],
-        #'Downstream': target[4],
-        #'Upstream': target[2],
-        #'Position': target[1],
-        #'GCContent': gc_content(target[3]),
-        #'Strand': target[0]
+        'Sequence': target['seq'],
+        'Count': target['count'],
+        'Start' : target['start'],
+        'End' : target['end'],
+        'Strand' : target['strand'],
     }
 
     return entry
@@ -50,23 +45,28 @@ def target_iterator(seq):
     pattern_reverse = r"(?=(CC[ACGT]{21}))"
 
     # once for forward, once for reverse
-    for pattern, seqModifier in [
-        [pattern_forward, lambda x : x], 
-        [pattern_reverse, lambda x : rc(x)]
+    for pattern, strand, seqModifier in [
+        [pattern_forward, '+', lambda x : x], 
+        [pattern_reverse, '-', lambda x : rc(x)]
     ]:
-        match_seq = re.findall(pattern, seq)
-        if match_seq:
-            for i in range(0, len(match_seq)):
-                target23 = seqModifier(match_seq[i])
-                if target23 in possibleTargets:
-                    possibleTargets[target23] += 1
-                else:
-                    possibleTargets[target23] = 1 
+        p = re.compile(pattern)
+        for m in p.finditer(seq):
+            target23 = seq[m.start() : m.start() + 23]
+            if target23 in possibleTargets:
+                possibleTargets[target23]['count'] += 1
+            else:
+                possibleTargets[target23] = {
+                    'count'     : 1,
+                    'start'     : m.start(),
+                    'end'       : m.start() + 23,
+                    'seq'       : target23,
+                    'strand'    : strand
+                } 
     
     for possibleTarget in possibleTargets:
-        if possibleTargets[possibleTarget] != 1:
+        if possibleTargets[possibleTarget]['count'] != 1:
             continue
-        yield (possibleTarget, possibleTargets[possibleTarget])
+        yield possibleTargets[possibleTarget]
 
 
 # Find target sites and add to dictionary, 'candidateTargets'.
@@ -77,23 +77,22 @@ def find_targets(params):
             
             batch.put_item(Item=targetEntry)
             
-            for targetTopic in [ISSL_SNS, CONSENSUS_SNS]:
+            for targetQueue in [ISSL_SQS, CONSENSUS_SQS]:
                 msg = json.dumps(
                     {
                         'default': json.dumps(targetEntry)
                     }
                 )
             
-                response = snsClient.publish(
-                    TargetArn=targetTopic,
-                    Message=msg,
-                    MessageStructure='json'
+                response = sqsClient.send_message(
+                    QueueUrl=targetQueue,
+                    MessageBody=msg,
                 )
                 
                 print(
                     index, 
                     target,
-                    targetTopic.split(':')[5], 
+                    targetQueue, 
                     response['ResponseMetadata']['HTTPStatusCode'], 
                     msg
                 )

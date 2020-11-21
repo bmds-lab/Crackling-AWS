@@ -67,7 +67,6 @@ def lambda_handler(event, context):
     
     # score the targets in bulk first
     message = None
-    print(event)
     
     # SNS only pushes one message at time, so this for-loop is useless
     # tho still worthwhile in preparation for an architecture that can send
@@ -76,20 +75,17 @@ def lambda_handler(event, context):
     # in the repo where this is implemented, but functioning incorrectly [stuck
     # in a invocation loop])
     for record in event['Records']:
-        print(record)
         try:
-            if 'Sns' in record:
-                if 'Message' in record['Sns']:
-                    message = json.loads(record['Sns']['Message'])
-        except Exception as e:
+            message = json.loads(record['body'])
+            message = json.loads(message['default'])
+        except e:
             print(f"Exception: {e}")
+            continue
 
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
             print(f'Missing core data to perform off-target scoring: {message}')
             continue
             
-        print(message)
-        
         # Transform the nested dict structure from Boto3 into something more
         # ideal, imo.
         # This is only needed if the payload is passed from a Lambda function.
@@ -108,7 +104,7 @@ def lambda_handler(event, context):
         jobId = message['JobID']
             
         if jobId not in jobToGenomeMap:
-            print(f"JobID {jobId} not in job -> genome map.")
+            print(f"JobID {jobId} not in job-to-genome map.")
             # Fetch the job information so it is known which genome to use
             result = dynamodb_client.get_item(
                 TableName = jobs_table_name,
@@ -126,9 +122,8 @@ def lambda_handler(event, context):
                 print(jobId, genome)
             else:
                 print(f'No matching JobID: {jobId}???')
-        else:  
-            print(f"JobID {jobId} already in job -> genome map.")
-          
+                continue
+
         # key: genome, value: list of guides
         seq20 = message['Sequence'][0:20]
         targetsToScorePerGenome[jobToGenomeMap[jobId]][seq20] = {
@@ -139,8 +134,7 @@ def lambda_handler(event, context):
             'Score'     : None,
         }
 
-    print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ")
-    print([len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
+    print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
     
     for genome in targetsToScorePerGenome:
         # key: genome, value: list of dict
@@ -149,11 +143,12 @@ def lambda_handler(event, context):
         # now update the database with scores
         for key in targetsScored:
             result = targetsScored[key]
-            print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}")
             response = TARGETS_TABLE.update_item(
                 Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
                 UpdateExpression='set IsslScore = :score',
-                ExpressionAttributeValues={':score': json.dumps(result['Score'])}
+                ExpressionAttributeValues={':score': json.dumps(result['Score'])},
+                ReturnValues='UPDATED_NEW'
             )
-  
+            print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+            print(response)
     return (event)

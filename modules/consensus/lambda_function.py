@@ -188,19 +188,15 @@ def lambda_handler(event, context):
     records = {}
     print(event)
     for record in event['Records']:
-    
-        message = None
-    
         try:
-            if 'Sns' in record:
-                if 'Message' in record['Sns']:
-                    message = json.loads(record['Sns']['Message'])
+            message = json.loads(record['body'])
+            message = json.loads(message['default'])
         except e:
             print(f"Exception: {e}")
             continue
-            
+
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
-            print(f'Missing core data to perform consensus: {message}')
+            print(f'Missing core data to perform off-target scoring: {message}')
             continue
             
         records[message['Sequence']] = {
@@ -215,12 +211,12 @@ def lambda_handler(event, context):
     
     for key in results:
         result = results[key]
-        print(f"Updating table for guide #{result['TargetID']}")
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
             ExpressionAttributeValues={':c': json.dumps(result['Consensus'])}
         )
+        print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
         
     return (event)
     
