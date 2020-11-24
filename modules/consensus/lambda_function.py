@@ -41,11 +41,11 @@ def CalcConsensus(records):
     rnaFoldResults = _CalcRnaFold(records.keys())
     
     for record in records:
-        records[record]['Consensus'] = [
+        records[record]['Consensus'] = ','.join([str(int(x)) for x in [
             _CalcChopchop(record),
             _CalcMm10db(record, rnaFoldResults[record]['result']),
             _CalcSgrnascorer(record)
-        ]
+        ]])
         
     return records
 
@@ -202,7 +202,7 @@ def lambda_handler(event, context):
         records[message['Sequence']] = {
             'JobID'     : message['JobID'],
             'TargetID'  : message['TargetID'],
-            'Consensus' : [],
+            'Consensus' : "",
         }
        
     print(f"Processing {len(records)} guides.")
@@ -211,10 +211,11 @@ def lambda_handler(event, context):
     
     for key in results:
         result = results[key]
+        print(json.dumps(result['Consensus']))
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
-            ExpressionAttributeValues={':c': json.dumps(result['Consensus'])}
+            ExpressionAttributeValues={':c': result['Consensus']}
         )
         print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
         

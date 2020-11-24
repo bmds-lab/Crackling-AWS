@@ -49,8 +49,11 @@ Resources:
     Properties:
       RestApiId: !Ref CracklingRestApi
     DependsOn:
-      - PostSubmitJob
+      - SubmitPostJobMethod
+      - SubmitOptionsMethod
       - GetTargetsMethod
+      - GetTargetsMethod
+      - TargetOptionsMethod
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 8a5ba4db-dc88-4861-87f4-c2ef066286aa
@@ -66,7 +69,35 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 1237aee6-1763-4764-8e61-cff47a07a281
-  PostSubmitJob:
+  SubmitOptionsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseTemplates:
+              application/json: ''
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''POST,OPTIONS'''
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+            StatusCode: 200
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          StatusCode: 200
+      ResourceId: !Ref SubmitJobResource
+      RestApiId: !Ref CracklingRestApi
+  SubmitPostJobMethod:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       AuthorizationType: NONE
@@ -76,6 +107,11 @@ Resources:
         IntegrationResponses:
           - ResponseTemplates:
               application/json: ''
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''POST,OPTIONS'''
+              method.response.header.Access-Control-Allow-Origin: '''*'''
             StatusCode: 200
         Type: AWS_PROXY
         Uri: !Sub >-
@@ -84,6 +120,8 @@ Resources:
         - ResponseModels:
             application/json: Empty
           ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
           StatusCode: 200
       ResourceId: !Ref SubmitJobResource
@@ -131,13 +169,19 @@ Resources:
                 #foreach($targ in $allTargs)
                   {
                     "Sequence": "$targ.Sequence.S",
+                    "Start": "$targ.Start.N",
+                    "End": "$targ.End.N",
+                    "Strand": "$targ.Strand.S",
                     "Consensus": "$targ.Consensus.S",
-                    "IsslScore": "$targ.IsslScore.S",
+                    "IsslScore": "$targ.IsslScore.S"
                   }#if($foreach.hasNext),#end
                 #end
                 ]
                 }
             ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''POST,OPTIONS'''
               method.response.header.Access-Control-Allow-Origin: '''*'''
             StatusCode: 200
         PassthroughBehavior: WHEN_NO_TEMPLATES
@@ -158,10 +202,43 @@ Resources:
         - ResponseModels:
             application/json: Empty
           ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
           StatusCode: 200
       ResourceId: !Ref ResultsTargetResource
       RestApiId: !Ref CracklingRestApi
+      
+  TargetOptionsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - ResponseTemplates:
+              application/json: ''
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: >-
+                'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+              method.response.header.Access-Control-Allow-Methods: '''GET,OPTIONS'''
+              method.response.header.Access-Control-Allow-Origin: '''*'''
+            StatusCode: 200
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          StatusCode: 200
+      ResourceId: !Ref ResultsTargetResource
+      RestApiId: !Ref CracklingRestApi
+      
+      
   ApiProxyPolicy:
     Properties:
       PolicyDocument:
@@ -638,11 +715,11 @@ Resources:
   IsslQueue:
      Type: AWS::SQS::Queue
      Properties:
-       ReceiveMessageWaitTimeSeconds: 10
+       ReceiveMessageWaitTimeSeconds: 20
   ConsensusQueue:
      Type: AWS::SQS::Queue
      Properties:
-       ReceiveMessageWaitTimeSeconds: 10
+       ReceiveMessageWaitTimeSeconds: 20
 Metadata:
   'AWS::CloudFormation::Designer':
     1ccb6ce5-114b-40aa-86e0-bab2d9469bb7:

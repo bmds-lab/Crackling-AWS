@@ -6,44 +6,15 @@ JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(JOBS_TABLE)
 
-headers = {'Access-Control-Allow-Origin': '*'}
-
-
-def return_400(message, tags = []):
-    payload = {'message': message}
-    if tags:
-        payload['keys'] = tags
-    body = json.dumps(payload)
-    return {'statusCode': 400, 'headers': headers, 'body': body}
-
-def write_job(jobid, sequence, jobtime):
-    table.put_item(
-        Item={
-            'JobID': jobid,
-            'Sequence': sequence,
-            'DateTime': jobtime
-        }
-    )
-    
-def lambda_handler(event, context):
-    if event['body']:
-        try:
-            job_request = json.loads(event['body'])
-        except:
-            return return_400('Error parsing request body. Is it properly formatted JSON?')
-    else:import boto3, json, uuid, os, time, datetime
-
-MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
-JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
-
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(JOBS_TABLE)
-
-headers = {'Access-Control-Allow-Origin': '*'}
+headers = {
+    'Access-Control-Allow-Headers'  : 'Content-Type',
+    'Access-Control-Allow-Origin'   : '*'
+}
 
 GENOMES_MAP = {
-    '1' : 'Test100000_E_coli_offTargets_20.fa.sorted.issl',
-    '2' : 'Test200000_E_coli_offTargets_20.fa.sorted.issl',
+    'SARS_COV_2' : 'SARS-COV-2_NC_045512-2.issl'
+    #'1' : 'Test100000_E_coli_offTargets_20.fa.sorted.issl',
+    #'2' : 'Test200000_E_coli_offTargets_20.fa.sorted.issl',
 }
 
 def return_http_json(code, message, tags = []):
@@ -77,7 +48,8 @@ def lambda_handler(event, context):
     else:
         return return_http_json(400, 'No genome selected')
 
-    jobid = str(int(time.time())) #str(uuid.uuid4())
+    jobid = str(uuid.uuid4())
+    #jobid = str(int(time.time()))
 
     table.put_item(
         Item={

@@ -1,0 +1,379 @@
+<html>
+
+	<head>
+		<title>Crackling</title>
+		
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		
+		<!--Import Google Icon Font-->
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+      
+		<!-- Compiled and minified CSS -->
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+		<!-- Compiled and minified JavaScript -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+            
+		
+		<script>
+			$(document).ready(function() {
+				// Prepare interface
+				$('.tabs').tabs();
+				$('#sequence').characterCounter();
+				$('.tooltipped').tooltip();
+				$('.collapsible').collapsible();
+				$('select').formSelect();
+				
+				// Crackling API end-point
+				API = $('#txtApiPath').val();
+				
+				// Submit a job
+				$('#btnSubmitJob').on('click', function() {
+					$.ajax({
+						url: API + '/submit', 
+						data: JSON.stringify({
+							'sequence' 	: $('#sequence').val(),
+							'genome'	: $('#genome').val()
+						}), 
+						type: "POST", 
+						contentType: "application/json",
+						success: function(data) {
+							console.log(data);
+							$('#txtJobId').val(data.JobID);
+							$('.tabs').tabs('select', 'tabResults');
+							$('#tblResults').find("tr:gt(0)").remove();
+						}, 
+						error: function (request, status, error) {
+							M.toast({html: 'Something went wrong: ' + error});
+						}
+					});
+				});
+				
+				// Get job results
+				$('#btnRetrieveJob').on('click', function() {
+					jobid = $('#txtJobId').val();
+					if (jobid == "") {
+						M.toast({html: 'You have not entered a job ID.'});
+						return 0;
+					}
+					$.ajax({
+						url: API + '/results/' + jobid + '/targets',
+						type: "GET", 
+						contentType: "application/json",
+						success: function(payload) {
+							if (payload.recordsTotal == 0) {
+								M.toast({html: 'No results for this job ID.'});
+								return 0;
+							}
+							$('#tblResults').find("tr:gt(0)").remove();
+							$.each(payload.data, function(i, item) {
+								// todo: tidy this up!!
+								c = item.Consensus.split(',').map(Number);
+								cStr = "Accepted by:";
+								if (c[0]) { cStr += " CHOPCHOP"; }
+								if (c[1]) { cStr += " mm10db"; }
+								if (c[1]) { cStr += " sgRNAScorer 2.0"; }
+								cCount = c[0] + c[1] + c[2];
+								
+								if (cCount >= 2) {
+									consensus = '<span style="color: green" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
+								} else {
+									consensus = '<span style="color: red" title="'+cStr+'">Failed ('+cCount+' / 3)</span>';
+								}
+								
+								var $tr = $('<tr>').append(
+									$('<td>').text(item.Start),
+									$('<td>').text(item.End),
+									$('<td>').text(item.Strand),
+									$('<td class="dnaSeq">').text(item.Sequence),
+									$('<td>').html(consensus),
+									$('<td>').text(item.IsslScore)
+								).appendTo('#tblResults');
+							});
+						}, 
+						error: function (request, status, error) {
+							console.log(error);
+						}
+					});
+				});
+			});
+		</script>
+		
+		<style>
+		.divNav { margin-bottom: 2em; }
+		.divContent {  }
+		.cracklingLogo { margin-left: 1em; }
+		.dnaSeq { font-family: Courier New; }
+		</style>
+	</head>
+	
+	<body>
+		<div class="nav-wrapper">
+			<nav class="nav-extended">
+				<div class="nav-wrapper blue darken-4">
+					<span class="cracklingLogo"><a href="#" class="brand-logo">Crackling</a></span>
+					<ul id="nav-mobile" class="right hide-on-med-and-down">
+						<li><a href="http://biomedicaldatascience.com/" target="new">BMDS Lab (QUT)</a></li>
+						<li><a href="https://bioinformatics.csiro.au/" target="new">Transformational Bioinformatics Lab (CSIRO)</a></li>
+					</ul>
+				</div>
+				
+				<div class="nav-content blue darken-2">
+					<ul class="tabs tabs-transparent">
+						<li class="tab col s3"><a href="#tabSubmit">Submit a job</a></li>
+						<li class="tab col s3"><a href="#tabResults">Retrieve results</a></li>
+						<li class="tab col s3"><a href="#tabSettings">Settings</a></li>
+						<li class="tab col s3"><a href="#tabAbout">About</a></li>
+					</ul>
+					<ul id="nav-mobile" class="hide-on-med-and-down">
+						<li><a href="sass.html">Sass</a></li>
+						<li><a href="badges.html">Components</a></li>
+						<li><a href="collapsible.html">JavaScript</a></li>
+					</ul>
+				</div>
+			</nav>
+		</div>
+			
+		<!-- Start Material container -->
+		<div class="container">
+			<div class="section">
+				<!-- Start page content -->
+				<div class="divContent">
+					
+					<!-- Tab: Submit -->
+					<div id="tabSubmit" class="col s10">
+
+						<div class="row">
+							<div class="col s12 m4">
+								<div class="card-panel teal">
+									<h5 class="white-text">CRISPR</h5>
+									<span class="white-text">
+									<span class="tooltipped" data-position="bottom" data-tooltip="Clustered Regularly Interspaced Short Palindromic Repeats" style="font-style: italic">CRISPR</span> and its associated genes form an adaptable immune system. An RNA-guided endonuclease (e.g. S. pyogenes Cas9) bind to enable site-specific cleavage. In wild-type systems, the RNA-guide is derived from the CRISPR array, but can be provided synthetically to enabled CRISPR-based gene editing.
+									</span>
+								</div>
+							</div>
+							<div class="col s12 m4">
+								<div class="card-panel teal">
+									<h5 class="white-text">Faster</h5>
+									<span class="white-text">
+									Crackling utilises Inverted Signature Slice Lists (ISSL) for off-target discovery. ISSL performs constant-time approximate nearest neighbour searches in an index of bit-encoded, locality-sensitive signatures. We further utilise serverless cloud technologies in this online edition to improve scalability and availability.
+									</span>
+								</div>
+							</div>
+							<div class="col s12 m4">
+								<div class="card-panel teal">
+									<h5 class="white-text">Better</h5>
+									<span class="white-text">
+									Crackling incorporates three scoring approaches and therefore, is more precise than any other pipeline taken individually. Crackling only recommends candidate guides that have been accepted by at least two of three tools, which we previously reviewed (see About).
+									</span>
+								</div>
+							</div>
+							<div class="col s12">
+								<div class="card-panel deep-orange lighten-1">
+									<h5 class="white-text">How to</h5>
+									<span class="white-text">
+									In the <i>query sequence</i> input below, paste a DNA sequence which you wish to generate CRISPR guide RNA sequences for. 
+									</br>
+									</br>
+									Guide specificity will be evaluated using your selected genome.
+									</br>
+									</br>
+									<b>Please cite us:</b>
+									</br>
+									</br>
+									Bradford, J., Chappell, T. and Perrin, D., 2020. <i>Faster and better CRISPR guide RNA design with the Crackling method.</i> bioRxiv.
+									</span>
+								</div>
+							</div>
+						</div>
+					
+					
+						<form name="frmSubmitJob" id="frmSubmitJob">
+							<div class="input-field col s12">
+								<textarea id="sequence" name="sequence" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste your DNA sequence here (not FASTA formatted)">ATCGATCGATCGATCGATCGAGGATCGATCGATCGATCGATCGTGGCCAATCGATCGATCGATCGATCG</textarea>
+								<label for="sequence">Query sequence</label>
+							</div>
+							</br>
+							<div class="input-field col s12 tooltipped" data-position="bottom" data-tooltip="Download Crackling standalone to analyse other genomes (or contact us)">
+								<select name="genome" id="genome">
+									<option disabled>Select a genome</option>
+									<option selected value="SARS_COV_2">SARS-COV-2</option>
+								</select> 
+								<label>Genome</label>
+							</div>
+
+							</br>
+
+							<button class="btn waves-effect waves-light tooltipped" type="button" name="btnSubmitJob" id="btnSubmitJob" data-position="bottom" data-tooltip="Save your Job ID when it appears!">
+								Submit job
+								<i class="material-icons right">send</i>
+							</button>
+						</form>
+					</div>
+					
+					
+					<!-- Tab: Results -->
+					<div id="tabResults" class="col s10">
+						<form name="frmRetrieveJob" id="frmRetrieveJob">
+							<div class="row">
+								<div class="input-field col s9">
+									<input placeholder="Placeholder" id="txtJobId" name="txtJobId" type="text" class="validate tooltipped" data-position="bottom" data-tooltip="Did you save your Job ID? Contact us if you need help.">
+									<label for="txtJobId">Job ID</label>
+								</div>
+								<div class="input-field col s3" style="text-align: right">
+									<button class="btn waves-effect waves-light tooltipped" type="button" name="btnRetrieveJob" id="btnRetrieveJob" data-position="bottom" data-tooltip="Some results may still be processing">
+										Retrieve results
+										<i class="material-icons right">get_app</i>
+									</button>
+								</div>
+							</div>
+							
+							</br>
+							
+							<table name="tblResults" id="tblResults" border="1" class="highlight centered">
+								<thead>
+									<tr>
+										<th>Start</th>
+										<th>End</th>
+										<th>Strand</th>
+										<th>Sequence</th>
+										<th>Consensus Results</th>
+										<th>Off-target score</th>
+									</tr>
+								</thead>
+							</table>
+						</form>
+					</div>
+					
+					
+					<!-- Tab: Settings -->
+					<div id="tabSettings" class="col s10">
+						<div class="input-field col s6">
+							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="https://22lkohk38b.execute-api.ap-southeast-2.amazonaws.com/CracklingProductionApi" data-position="bottom">
+							<label for="txtApiPath">Crackling API URL</label>
+						</div>
+					</div>
+					
+					
+					<!-- Tab: About -->
+					<div id="tabAbout" class="col s10">
+						<ul class="collapsible">
+							<li>
+								<div class="collapsible-header"><i class="material-icons">live_help</i>Method</div>
+								<div class="collapsible-body">
+									<h4>Crackling-Cloud</h4>
+									<blockquote>
+										CRISPR-Cas9 systems have become a leading tool for gene editing. However, the design of the guide RNAs used to target specific regions is not trivial. Design tools need to identify target sequences that will maximise the likelihood of obtaining the desired cut, and minimise the risk of off-target modifications. Achieving this across entire genomes is computationally challenging, with some existing methods already attempting this, however they lack the accuracy and performance required for whole-genome analysis. There is a clear need for a tool that can meet both objectives while remaining practical to use on large genomes.
+										</br>
+										</br>
+										Here, we present Crackling, a new method for whole-genome identification of suitable CRISPR targets. The method maximises the efficiency of the guides by combining the results of multiple scoring approaches, including: inhibition of gRNA expression due to Polymerase-III terminators, poor site binding due to GC-content, poor hairpin formation, the presence of an indel-causing guanine in position 20, and via machine learnt bias derived from an existing model. The results, that are validated on experimental data, show the consensus approach selects guides of higher efficacy (with precision of up to 92%) than those selected by existing tools. Following efficacy checks, guide specificity is considered only for guides that pass. For this, we employ an approach based on Inverted Signature Slice Lists (ISSL) - a locality-sensitive, signature-based search method for large-scale data. ISSL provides a gain of an order of magnitude in speed when calculating a position-specific off-target risk score, all whilst preserving the same level of accuracy. Overall, this makes Crackling a faster and better method to design guide RNAs at scale.
+										</br>
+										</br>
+										Crackling can be installed locally, with the source code and license at <a href="https://github.com/bmds-lab/Crackling" target="new">https://github.com/bmds-lab/Crackling</a>. We further improve the convenience and availability of Crackling by adapting it for a serverless architecture. This enables rapid scaling for extremely large sized inputs at minimal cost and outperforms traditional server-based approaches that are often limited by a lack of compute resources. 
+										</br>
+										</br>
+										<i>See References #1</i>
+									</blockquote>
+									
+									
+									<h4>Multi-approach efficiency evaluation</h4>
+									<blockquote>
+										A large number of computational methods have been developed to assist in the identification of suitable guides. However, there is only limited overlap between the guides that each tool identifies. This can motivate further development, but also raises the question of whether it is possible to combine existing tools to improve guide design.
+										</br>
+										</br>
+										We considered nine leading guide design tools, and their output when tested using two sets of guides for which experimental validation data is available. We found that consensus approaches were able to out perform individual tools. The best performance (with a precision of up to 0.912) was obtained when combining four of the tools and accepting all guides selected by at least three of them.
+										</br>
+										</br>
+										These results can be used to improve CRISPR-based studies, but also to guide further tool development. However, they only provide a short-term solution as the time and computational resources required to run four tools may be impractical in certain applications.
+										</br>
+										</br>
+										<i>See References #2</i>
+									</blockquote>
+									
+									<h4>FAQ's</h4>
+									<p><b>Why can I not see all consensus and ISSL results?</b></p>
+									<p>This is a known issue that we're trying to fix as quickly as possible.</p>
+								</div>
+							</li>
+							<li>
+								<div class="collapsible-header"><i class="material-icons">contact_support</i>Contact Us</div>
+								<div class="collapsible-body">
+									<div class="row">
+									
+										<div class="col s12 m4">
+											<div class="card blue-grey darken-1">
+												<div class="card-content white-text">
+													<span class="card-title">Support</span>
+													<p>via BMDS Lab</p>
+													<p>Group leader: Dimitri Perrin</p>
+													</p>
+												</div>
+												<div class="card-action">
+													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="dimitri.perrin@qut (add dot edu dot au)">Email</a>
+												</div>
+											</div>
+										</div>
+										
+										<div class="col s12 m4">
+											<div class="card blue-grey darken-1">
+												<div class="card-content white-text">
+													<span class="card-title">BMDS Lab</span>
+													<p>Biomedical Data Science Lab</p>
+													<p>Queensland University of Technology</p>
+													</p>
+												</div>
+												<div class="card-action">
+													<a href="http://biomedicaldatascience.com/" target="new">Website</a>
+													<a href="https://twitter.com/BMDS_lab" target="new">Twitter</a>
+												</div>
+											</div>
+										</div>
+										
+										<div class="col s12 m4">
+											<div class="card blue-grey darken-1">
+												<div class="card-content white-text">
+													<span class="card-title">Transformational Bioinformatics</span>
+													<p>Commonwealth Scientific and Industrial Research Organisation</p>
+													</p>
+												</div>
+												<div class="card-action">
+													<a href="https://bioinformatics.csiro.au/" target="new">Website</a>
+													<a href="https://twitter.com/Tbioinf" target="new">Twitter</a>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</li>
+							<li>
+								<div class="collapsible-header"><i class="material-icons">school</i>References</div>
+								<div class="collapsible-body">
+									<ol>
+										<li>Bradford, J., Chappell, T. and Perrin, D., 2020. <i>Faster and better CRISPR guide RNA design with the Crackling method.</i> bioRxiv.</li>
+										</br>
+										<li>Bradford, J., & Perrin, D. (2019). <i>Improving CRISPR guide design with consensus approaches.</i> BMC Genomics, 20(9), 931.</li>
+										</br>
+										<li>Bradford, J., and Perrin, D. <i>A Benchmark of Computational CRISPR-Cas9 Guide Design Methods.</i> PLoS Computational Biology 15, no. 8 (2019): e1007274.</li>
+										</br>
+										<li>Montague, T. G., Cruz, J. M., Gagnon, J. A., Church, G. M., & Valen, E. (2014). <i>CHOPCHOP: a CRISPR/Cas9 and TALEN web tool for genome editing</i>. Nucleic Acids Research, 42(W1), W401-W407.</li>
+										</br>
+										<li>Chari, R., Yeo, N. C., Chavez, A., & Church, G. M. (2017). <i>sgRNA Scorer 2.0: A Species-Independent Model to Predict CRISPR/Cas9 Activity.</i> ACS Synthetic Biology, 6(5), 902-904.</li>
+										</br>
+										<li>O’Brien, A., & Bailey, T. L. (2014). <i>GT-Scan: Identifying Unique Genomic Targets.</i> Bioinformatics, 30(18), 2673-2675.</li>
+									</ol>
+								</div>
+							</li>
+						</ul>
+					</div>
+					
+				<!-- End page content -->
+				</div>
+
+			<!-- End section -->
+			</div>
+			
+		<!-- End Material container -->
+		</div>
+	</body>
+
+</html>

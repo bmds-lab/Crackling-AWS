@@ -9,8 +9,10 @@ call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
 OFFTARGETS_INDEX_MAP = {
-    'Test100000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test100000_E_coli_offTargets_20.fa.sorted.issl",
-    'Test200000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test200000_E_coli_offTargets_20.fa.sorted.issl"
+    #'Test100000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test100000_E_coli_offTargets_20.fa.sorted.issl",
+    #'Test200000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test200000_E_coli_offTargets_20.fa.sorted.issl"
+    
+    'SARS-COV-2_NC_045512-2.issl' : r"/opt/SARS-COV-2_NC_045512-2.issl"
 }
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
