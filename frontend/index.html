@@ -3,9 +3,20 @@
 	<head>
 		<title>Crackling</title>
 		
+		<!-- Global site tag (gtag.js) - Google Analytics -->
+		<script async src="https://www.googletagmanager.com/gtag/js?id=G-MMQYQKBXNX"></script>
+		<script>
+		    window.dataLayer = window.dataLayer || [];
+		    function gtag(){dataLayer.push(arguments);}
+		    gtag('js', new Date());
+		    
+		    gtag('config', 'G-MMQYQKBXNX');
+		</script>
+		
+		<!--Import JQuery v3.5.1 -->
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 		
-		<!--Import Google Icon Font-->
+		<!--Import Google Icon Font -->
         <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
       
 		<!-- Compiled and minified CSS -->
@@ -24,11 +35,22 @@
 				$('.collapsible').collapsible();
 				$('select').formSelect();
 				
-				// Crackling API end-point
-				API = $('#txtApiPath').val();
 				
 				// Submit a job
 				$('#btnSubmitJob').on('click', function() {
+					API = $('#txtApiPath').val();
+					
+					var regex = new RegExp("^[ATCGatcg]+$");
+					if (!regex.test($('#sequence').val())) {
+						M.toast({html: 'Your query sequence should only contain the letters of the genomic alphabet (ATCG).'});
+						return 0;
+					}
+					
+					//if ($('#genome').val() != "") {
+					//	M.toast({html: 'You must select a genome for off-target scoring.'});
+					//	return 0;
+					//}
+				
 					$.ajax({
 						url: API + '/submit', 
 						data: JSON.stringify({
@@ -51,6 +73,8 @@
 				
 				// Get job results
 				$('#btnRetrieveJob').on('click', function() {
+					API = $('#txtApiPath').val();
+					
 					jobid = $('#txtJobId').val();
 					if (jobid == "") {
 						M.toast({html: 'You have not entered a job ID.'});
@@ -113,6 +137,7 @@
 				<div class="nav-wrapper blue darken-4">
 					<span class="cracklingLogo"><a href="#" class="brand-logo">Crackling</a></span>
 					<ul id="nav-mobile" class="right hide-on-med-and-down">
+						<li><a href="https://scholar.google.com.au/citations?user=AYdGndoAAAAJ&hl=en" target="new">Jacob Bradford</a></li>
 						<li><a href="http://biomedicaldatascience.com/" target="new">BMDS Lab (QUT)</a></li>
 						<li><a href="https://bioinformatics.csiro.au/" target="new">Transformational Bioinformatics Lab (CSIRO)</a></li>
 					</ul>
@@ -181,7 +206,7 @@
 									<b>Please cite us:</b>
 									</br>
 									</br>
-									Bradford, J., Chappell, T. and Perrin, D., 2020. <i>Faster and better CRISPR guide RNA design with the Crackling method.</i> bioRxiv.
+									Jacob Bradford, Timothy Chappell and Dimitri Perrin, 2020. <i>Faster and better CRISPR guide RNA design with the Crackling method.</i> bioRxiv.
 									</span>
 								</div>
 							</div>
@@ -197,7 +222,7 @@
 							<div class="input-field col s12 tooltipped" data-position="bottom" data-tooltip="Download Crackling standalone to analyse other genomes (or contact us)">
 								<select name="genome" id="genome">
 									<option disabled>Select a genome</option>
-									<option selected value="SARS_COV_2">SARS-COV-2</option>
+									<option selected value="SARS_COV_2">SARS-COV-2 (NC_045512.2)</option>
 								</select> 
 								<label>Genome</label>
 							</div>
@@ -303,13 +328,17 @@
 										<div class="col s12 m4">
 											<div class="card blue-grey darken-1">
 												<div class="card-content white-text">
-													<span class="card-title">Support</span>
-													<p>via BMDS Lab</p>
-													<p>Group leader: Dimitri Perrin</p>
+													<span class="card-title">Design and Development</span>
+													<p>Jake Bradford</p>
+													<p>PhD Candidate</p>
+													<p>Queensland University of Technology</p>
 													</p>
 												</div>
 												<div class="card-action">
-													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="dimitri.perrin@qut (add dot edu dot au)">Email</a>
+													<a href="http://jakebradford.com.au/" target="new">Website</a>
+													<a href="https://twitter.com/jakebradfordqut" target="new">Twitter</a>
+													<a href="https://scholar.google.com.au/citations?user=AYdGndoAAAAJ&hl=en" target="new">Scholar</a>
+													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="jacob.bradford@hdr.qut (add .edu.au)">Email</a>
 												</div>
 											</div>
 										</div>
@@ -325,6 +354,7 @@
 												<div class="card-action">
 													<a href="http://biomedicaldatascience.com/" target="new">Website</a>
 													<a href="https://twitter.com/BMDS_lab" target="new">Twitter</a>
+													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="dimitri.perrin@qut (add .edu.au)">Email</a>
 												</div>
 											</div>
 										</div>

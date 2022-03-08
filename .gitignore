@@ -1,3 +1,6 @@
 _*/*
 cloudformation/CracklingCloudFormation.yaml.packaged
 layers/consensusPy38Pkgs/*
+*.venv
+*.zip
+cdk.out

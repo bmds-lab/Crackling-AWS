@@ -29,6 +29,35 @@ Please refer to our paper when using Crackling:
 > Crackling is available at https://github.com/bmds-lab/Crackling under the Berkeley Software Distribution (BSD) 3-Clause license.
 
 
+## Installing AWS-CDK in Linux or WSL
+
+```bash
+
+# Install Node Version Manager (nvm)
+$ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+
+# Using nvm, install the latest version of node
+$ nvm install node
+
+# Install the AWS CDK
+$ npm install -g aws-cdk
+
+# Check the AWS cdk is executable
+$ cdk --version
+> 2.15.0 (build 151055e)
+
+# Make sure python3.8 venv is installed
+$ sudo apt-get install python3-venv
+
+# Initialise a new AWS project
+$ cdk init app --language python
+
+# Install the requirements, as defined by the AWS CDK
+$ pip install -r requirements.txt
+
+
+```
+
 
 ## Architecture
 
