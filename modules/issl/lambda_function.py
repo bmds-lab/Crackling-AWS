@@ -2,6 +2,7 @@ import json
 import boto3
 import os
 import shutil
+import time
 from subprocess import call
 import tempfile
 
@@ -18,9 +19,11 @@ OFFTARGETS_INDEX_MAP = {
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
+issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
 
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
+sqs_client = boto3.client('sqs')
 
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
@@ -71,6 +74,11 @@ def lambda_handler(event, context):
     # score the targets in bulk first
     message = None
     
+    # SQS receipt handles
+    ReceiptHandles = []
+    
+    print(event)
+    
     # SNS only pushes one message at time, so this for-loop is useless
     # tho still worthwhile in preparation for an architecture that can send
     # messages in batches (for example, via a DynamoDB stream)
@@ -107,7 +115,7 @@ def lambda_handler(event, context):
         jobId = message['JobID']
             
         if jobId not in jobToGenomeMap:
-            print(f"JobID {jobId} not in job-to-genome map.")
+            #print(f"JobID {jobId} not in job-to-genome map.")
             # Fetch the job information so it is known which genome to use
             result = dynamodb_client.get_item(
                 TableName = jobs_table_name,
@@ -125,6 +133,7 @@ def lambda_handler(event, context):
                 print(jobId, genome)
             else:
                 print(f'No matching JobID: {jobId}???')
+                ReceiptHandles.append(record['receiptHandle'])
                 continue
 
         # key: genome, value: list of guides
@@ -136,8 +145,10 @@ def lambda_handler(event, context):
             'Seq20'     : seq20,
             'Score'     : None,
         }
+        
+        ReceiptHandles.append(record['receiptHandle'])
 
-    print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
+    #print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
     
     for genome in targetsToScorePerGenome:
         # key: genome, value: list of dict
@@ -146,13 +157,29 @@ def lambda_handler(event, context):
         # now update the database with scores
         for key in targetsScored:
             result = targetsScored[key]
-            print({'JobID': result['JobID'], 'TargetID': result['TargetID'], 'key': key})
+            #print({'JobID': result['JobID'], 'TargetID': result['TargetID'], 'key': key})
             response = TARGETS_TABLE.update_item(
                 Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
                 UpdateExpression='set IsslScore = :score',
                 ExpressionAttributeValues={':score': json.dumps(result['Score'])},
-                ReturnValues='UPDATED_NEW'
+                #ReturnValues='UPDATED_NEW'
             )
-            print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
-            print(response)
+            #print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+            #print(response)    
+    
+    # remove messages from the SQS queue. Max 10 at a time.
+    for i in range(0, len(ReceiptHandles), 10):
+        toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
+        print(toDelete)
+        response = sqs_client.delete_message_batch(
+            QueueUrl=issl_queue_url,
+            Entries=[
+                {
+                    'Id': f"{time.time_ns()}",
+                    'ReceiptHandle': delete
+                }
+                for delete in toDelete
+            ]
+        )
+    
     return (event)

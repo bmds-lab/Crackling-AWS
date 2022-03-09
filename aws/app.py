@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+"""
+Crackling-cloud AWS
+
+Author: Jake Bradford, and with thanks to our colleagues in the Transformational Bioinformatics lab
+at the CSIRO, including Denis Bauer, Laurence Wilson and Brendan Hosking.
+
+"""
 import aws_cdk as cdk
 
 from aws_cdk import (
@@ -38,7 +45,7 @@ class CracklingStack(Stack):
 
         ### DynamoDB (ddb) is a key-value store.
         # This table stores jobs for processing
-        # ddb stores data in partitions. The partition key assists the 
+        # ddb stores data in partitions
         ddbJobs = ddb_.Table(self, "ddbJobs",
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
@@ -162,14 +169,16 @@ class CracklingStack(Stack):
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
             environment={
-                'TARGETS_TABLE' : ddbTargets.table_name
+                'TARGETS_TABLE' : ddbTargets.table_name,
+                'CONSENSUS_QUEUE' : sqsConsensus.queue_url
             }
         )
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
             "mapLdaConsesusSqsConsensus",
             event_source_arn=sqsConsensus.queue_arn,
-            batch_size=100
+            batch_size=100,
+            max_batching_window=Duration.seconds(1)
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
 
@@ -185,7 +194,8 @@ class CracklingStack(Stack):
             vpc=cracklingVpc,
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
-                'JOBS_TABLE' : ddbJobs.table_name
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'ISSL_QUEUE' : sqsIssl.queue_url
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
@@ -194,6 +204,7 @@ class CracklingStack(Stack):
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10
         )
+        ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
 
         ### API

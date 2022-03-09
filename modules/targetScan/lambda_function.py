@@ -48,7 +48,9 @@ def target_iterator(seq):
     ]:
         p = re.compile(pattern)
         for m in p.finditer(seq):
-            target23 = seq[m.start() : m.start() + 23]
+            target23 = seqModifier(
+                seq[m.start() : m.start() + 23]
+            )
             if target23 in possibleTargets:
                 possibleTargets[target23]['count'] += 1
             else:
@@ -133,4 +135,4 @@ def lambda_handler(event, context):
         deleteCandidateTargets(jobid)
         print('Processed REMOVE event for {}.'.format(jobid))
     
-    return 'Completed {} tasks.'.format(len(inserted) + len(removed))
+    return None #'Completed {} tasks.'.format(len(inserted) + len(removed))

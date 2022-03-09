@@ -6,6 +6,7 @@ import glob
 import joblib
 import re
 import ast
+import time
 
 from sklearn.svm import SVC
 from subprocess import call
@@ -21,6 +22,9 @@ low_energy_threshold = -30
 high_energy_threshold = -18
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
+consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
+
+sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 
@@ -186,8 +190,10 @@ def _CalcSgrnascorer(seq):
 
 def lambda_handler(event, context):
     records = {}
+    ReceiptHandles = []
     print(event)
     for record in event['Records']:
+        print(record)
         try:
             message = json.loads(record['body'])
             message = json.loads(message['default'])
@@ -200,24 +206,40 @@ def lambda_handler(event, context):
             continue
             
         records[message['Sequence']] = {
-            'JobID'     : message['JobID'],
-            'TargetID'  : message['TargetID'],
-            'Consensus' : "",
+            'JobID'         : message['JobID'],
+            'TargetID'      : message['TargetID'],
+            'Consensus'     : "",
         }
+        ReceiptHandles.append(record['receiptHandle'])
        
-    print(f"Processing {len(records)} guides.")
+    #print(f"Processing {len(records)} guides.")
     
     results = CalcConsensus(records)
     
     for key in results:
         result = results[key]
-        print(json.dumps(result['Consensus']))
+        #print(json.dumps(result['Consensus']))
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
             ExpressionAttributeValues={':c': result['Consensus']}
         )
-        print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
-        
+        #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+    
+    # remove messages from the SQS queue. Max 10 at a time.
+    for i in range(0, len(ReceiptHandles), 10):
+        toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
+        print(toDelete)
+        response = sqs_client.delete_message_batch(
+            QueueUrl=consensus_queue_url,
+            Entries=[
+                {
+                    'Id': f"{time.time_ns()}",
+                    'ReceiptHandle': delete
+                }
+                for delete in toDelete
+            ]
+        )
+    
     return (event)
     
