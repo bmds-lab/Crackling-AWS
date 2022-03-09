@@ -25,7 +25,7 @@ def clean_candidate_sequence(rawsequence):
 
 
 def create_target_entry(params, index, target):
-    entry = {
+    return {
         'JobID': params['JobID'],
         'TargetID': index,
         'Sequence': target['seq'],
@@ -34,9 +34,6 @@ def create_target_entry(params, index, target):
         'End' : target['end'],
         'Strand' : target['strand'],
     }
-
-    return entry
-
 
 def target_iterator(seq):
     possibleTargets = {}
@@ -107,6 +104,7 @@ def deleteCandidateTargets(jobid):
     
     with table.batch_writer() as batch:
         for i in range(0, target_count):
+            print(f"Deleting: ", {'JobID': jobid, 'TargetID': index})
             batch.delete_item(Key={'JobID': jobid, 'TargetID': index})
             index += 1
 

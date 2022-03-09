@@ -1,10 +1,11 @@
 import json
 import boto3
 import os
+import shutil
 from subprocess import call
 import tempfile
 
-call(f"cp -r /opt/isslScoreOfftargets /tmp/isslScoreOfftargets".split(' '))
+shutil.copy("/opt/isslScoreOfftargets", "/tmp/isslScoreOfftargets")
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
@@ -145,6 +146,7 @@ def lambda_handler(event, context):
         # now update the database with scores
         for key in targetsScored:
             result = targetsScored[key]
+            print({'JobID': result['JobID'], 'TargetID': result['TargetID'], 'key': key})
             response = TARGETS_TABLE.update_item(
                 Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
                 UpdateExpression='set IsslScore = :score',

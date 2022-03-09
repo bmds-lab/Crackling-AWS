@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 
 import aws_cdk as cdk
 
@@ -11,29 +10,35 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_apigateway as api_,
     aws_sqs as sqs_,
-    aws_dynamodb as ddb_,
-    aws_s3 as s3_
+    aws_dynamodb as ddb_
 )
-import aws_cdk
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
-        ### VPC
+        ### Virtual Private Cloud
+        # VPCs are used for constraining infrastructure to a private network.
         cracklingVpc = ec2_.Vpc(self, "CracklingVpc")
 
-        # SQS: ISSL queue
+        ### Simple Queue Service (SQS) is a queuing service for serverless applications.
+        # This queue is for off-target scoring.
+        # The TargetScan lambda function adds guides to this queue for processing
+        # The Issl lambda function processes items in this queue
         sqsIssl = sqs_.Queue(self, "sqsIssl", 
             receive_message_wait_time=Duration.seconds(20)
         )
 
-        # SQS: Consesus queue
+        ### SQS queue for evaluating guide efficiency
+        # The TargetScan lambda function adds guides to this queue for processing
+        # The consensus lambda function processes items in this queue
         sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
             receive_message_wait_time=Duration.seconds(20)
         )
 
-        # DynamoDB: jobs table
+        ### DynamoDB (ddb) is a key-value store.
+        # This table stores jobs for processing
+        # ddb stores data in partitions. The partition key assists the 
         ddbJobs = ddb_.Table(self, "ddbJobs",
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
@@ -41,30 +46,33 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
-        # DynamoDB: targets table
+        ### DynamoDB table for storing targets.
+        # The sort key enables quicker indexing.
         ddbTargets = ddb_.Table(self, "ddbTargets",
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
             partition_key=ddb_.Attribute(name="JobID", type=ddb_.AttributeType.STRING),
-            sort_key=ddb_.Attribute(name="TargetID", type=ddb_.AttributeType.STRING),
+            sort_key=ddb_.Attribute(name="TargetID", type=ddb_.AttributeType.NUMBER),
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
-        # Lambda layer: ISSL binary
+        ### Lambda is an event-driven compute service.
+        # Some lambda functions may need additional resources - these are provided via layers.
+        # This layer provides the ISSL scoring binary.
         lambdaLayerIssl = lambda_.LayerVersion(self, "isslBinary",
             code=lambda_.Code.from_asset("../layers/isslScoreOfftargets"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        # Lambda layer: ISSL indexes
+        ### Lambda layer containing ISSL indexes
         lambdaLayerIsslIdxs = lambda_.LayerVersion(self, "isslIndexes",
             code=lambda_.Code.from_asset("../layers/isslIndexes"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        # Lambda layer: python3.8 packages
+        ### Lambda layer containing python3.8 packages
         lambdaLayerPythonPkgs = lambda_.LayerVersion(self, "python38pkgs",
             code=lambda_.Code.from_asset("../layers/consensusPy38Pkgs"),
             removal_policy=RemovalPolicy.DESTROY,
@@ -74,7 +82,7 @@ class CracklingStack(Stack):
             ]
         )
 
-        # Lambda layer: sgRNAScorer 2.0 model
+        ### Lambda layer containing the sgRNAScorer 2.0 model
         lambdaLayerSgrnascorerModel = lambda_.LayerVersion(self, "sgrnascorer2Model",
             code=lambda_.Code.from_asset("../layers/sgrnascorer2Model"),
             removal_policy=RemovalPolicy.DESTROY,
@@ -84,21 +92,24 @@ class CracklingStack(Stack):
             ]
         )
 
-        # Lambda layer: RNAfold binary
+        ### Lambda layer containing the RNAfold binary
         lambdaLayerRnafold = lambda_.LayerVersion(self, "rnafold",
             code=lambda_.Code.from_asset("../layers/rnaFold"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        # Lambda layer: shared libraries for compiled binaries
+        ### Lambda layer contaiing shared libraries for compiled binaries
         lambdaLayerLib = lambda_.LayerVersion(self, "lib",
             code=lambda_.Code.from_asset("../layers/lib"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        # Lambda: create job function
+        ### Lambda function that acts as the entry point to the application.
+        # This function creates a record in the DynamoDB jobs table.
+        # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
+        # Read/write permissions on the jobs table needs to be granted to this function.
         lambdaCreateJob = lambda_.Function(self, "createJob", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
@@ -112,7 +123,11 @@ class CracklingStack(Stack):
         )
         ddbJobs.grant_read_write_data(lambdaCreateJob)
 
-        # Lambda: target scan function
+        ### Lambda function that scans a sequence for CRISPR sites.
+        # This function is triggered when a record is written to the DynamoDB jobs table.
+        # It creates one record per guide in the DynamoDB guides table.
+        # It needs permission to read/write data from the jobs and guides tables.
+        # It needs permission to send messages to the SQS queues.
         lambdaTargetScan = lambda_.Function(self, "targetScan", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
@@ -137,12 +152,14 @@ class CracklingStack(Stack):
         )
         
 
-        # Lambda: consensus function
+        ### Lambda function to assess guide efficiency
+        # This function consumes messages in the SQS consensus queue.
+        # The results are written to the DynamoDB consensus table.
         lambdaConsensus = lambda_.Function(self, "consensus", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/consensus"),
-            layers=[lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
+            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name
@@ -152,17 +169,19 @@ class CracklingStack(Stack):
         lambdaConsensus.add_event_source_mapping(
             "mapLdaConsesusSqsConsensus",
             event_source_arn=sqsConsensus.queue_arn,
-            batch_size=10
+            batch_size=100
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
 
 
-        # Lambda: ISSL function
+        ### Lambda function that assesses guide specificity using ISSL.
+        # This function consumes messages in the SQS Issl queue.
+        # The results are written to the DynamoDB consensus table.
         lambdaIssl = lambda_.Function(self, "issl", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/issl"),
-            layers=[lambdaLayerIssl, lambdaLayerLib, lambdaLayerIsslIdxs],
+            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerIsslIdxs],
             vpc=cracklingVpc,
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
@@ -175,7 +194,6 @@ class CracklingStack(Stack):
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10
         )
-        ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
 
         ### API
