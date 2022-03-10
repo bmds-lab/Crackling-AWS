@@ -12,15 +12,15 @@ table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
 
 # Function that returns the reverse-complement of a given sequence
+complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
 def rc(dna):
-    complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
     rcseq = dna.translate(complements)[::-1]
     return rcseq
     
 #Loads a FASTA file and creates a string <candidate_seq> from the sequence.
+trans = str.maketrans('', '', '1234567890 \n')
 def clean_candidate_sequence(rawsequence):
     sequence = str(rawsequence)
-    trans = str.maketrans('', '', '1234567890 \n')
     return sequence.translate(trans).upper()
 
 
@@ -35,18 +35,20 @@ def create_target_entry(params, index, target):
         'Strand' : target['strand'],
     }
 
+pattern_forward = r"(?=([ATCG]{21}GG))"
+pattern_reverse = r"(?=(CC[ACGT]{21}))"
+pattern_forward_compiled = re.compile(pattern_forward)
+pattern_reverse_compiled = re.compile(pattern_reverse)
+
 def target_iterator(seq):
     possibleTargets = {}
 
-    pattern_forward = r"(?=([ATCG]{21}GG))"
-    pattern_reverse = r"(?=(CC[ACGT]{21}))"
 
     # once for forward, once for reverse
-    for pattern, strand, seqModifier in [
-        [pattern_forward, '+', lambda x : x], 
-        [pattern_reverse, '-', lambda x : rc(x)]
+    for p, strand, seqModifier in [
+        [pattern_forward_compiled, '+', lambda x : x], 
+        [pattern_reverse_compiled, '-', lambda x : rc(x)]
     ]:
-        p = re.compile(pattern)
         for m in p.finditer(seq):
             target23 = seqModifier(
                 seq[m.start() : m.start() + 23]
@@ -88,13 +90,13 @@ def find_targets(params):
                     MessageBody=msg,
                 )
                 
-                print(
-                    index, 
-                    target,
-                    targetQueue, 
-                    response['ResponseMetadata']['HTTPStatusCode'], 
-                    msg
-                )
+                #print(
+                #    index, 
+                #    target,
+                #    targetQueue, 
+                #    response['ResponseMetadata']['HTTPStatusCode'], 
+                #    msg
+                #)
 
 
 def deleteCandidateTargets(jobid):
@@ -106,7 +108,7 @@ def deleteCandidateTargets(jobid):
     
     with table.batch_writer() as batch:
         for i in range(0, target_count):
-            print(f"Deleting: ", {'JobID': jobid, 'TargetID': index})
+            #print(f"Deleting: ", {'JobID': jobid, 'TargetID': index})
             batch.delete_item(Key={'JobID': jobid, 'TargetID': index})
             index += 1
 
@@ -127,12 +129,12 @@ def lambda_handler(event, context):
         except:
             return 'Entry contains invalid information'
         find_targets(params)
-        print('Processed INSERT event for {}.'.format(jobid))
+        #print('Processed INSERT event for {}.'.format(jobid))
         
     removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
     for r in removed:
         jobid = r['JobID']['S']
         deleteCandidateTargets(jobid)
-        print('Processed REMOVE event for {}.'.format(jobid))
+        #print('Processed REMOVE event for {}.'.format(jobid))
     
     return None #'Completed {} tasks.'.format(len(inserted) + len(removed))

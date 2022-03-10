@@ -170,7 +170,6 @@ def lambda_handler(event, context):
     # remove messages from the SQS queue. Max 10 at a time.
     for i in range(0, len(ReceiptHandles), 10):
         toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
-        print(toDelete)
         response = sqs_client.delete_message_batch(
             QueueUrl=issl_queue_url,
             Entries=[
