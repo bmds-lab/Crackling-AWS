@@ -3,8 +3,11 @@
 """
 Crackling-cloud AWS
 
-Author: Jake Bradford, and with thanks to our colleagues in the Transformational Bioinformatics lab
-at the CSIRO, including Denis Bauer, Laurence Wilson and Brendan Hosking.
+Jacob Bradford (1), Timothy Chappell (1), Brendan Hosking (2), Laurence Wilson (2), Dimitri Perrin (1)
+    (1) Queensland University of Technology, Brisbane, Australia 
+    (2) Commonwealth Scientific and Industrial Research Organisation (CSIRO), Sydney, Australia 
+
+The standalone edition of the Crackling pipeline is available at https://github.com/bmds-lab/Crackling
 
 """
 import aws_cdk as cdk
@@ -230,11 +233,8 @@ class CracklingStack(Stack):
         ddbTargets.grant_read_write_data(lambdaIssl)
 
         ### API
-        # this handles the staging and deployment of the API. An CloudFormation output is generated with the API URL.
-        
-        # Get the S3 bucket that hosts the frontend website
-        #s3Frontend = s3_.Bucket.from_bucket
-
+        # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
+        # Enable cross-origin resource sharing (CORS).
         apiRest = api_.RestApi(self, 
             "CracklingRestApi",
             default_cors_preflight_options=api_.CorsOptions(
@@ -246,12 +246,17 @@ class CracklingStack(Stack):
             )
         ) 
          
-        # /results/{job-id}/targets
+        # Path: /results/{job-id}/targets
         apiResourceResultsIdTargets = apiRest.root.add_resource("results") \
             .add_resource("{jobid}") \
             .add_resource("targets") # returns an `IResource`
             
-        # TODO: this probably needs fixing. perhaps try add_proxy
+        # Add a method to the above path.
+        # This method has a custom IAM role to allow it to read the dynamodb targets table.
+        # The integration response (from dynamodb) is transformed using a Apache Velocity template.
+        # This is probably the most difficult part of the Stack to understand.
+        # You should read about the concepts of AWS ApiGateway: https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-basic-concept.html
+        #   Particularly focus on: integration request, integration response, method request, method response
         apiResourceResultsIdTargets.add_method( # Adds a `Method` object
             "GET",
             api_.AwsIntegration( 

@@ -1,14 +1,22 @@
 # Crackling AWS
 
-This is a cloud-based implementation of the Crackling pipeline, for design of efficient and specific CRISPR Cas9 guides. This implementation utilises serverless technologies made available by Amazon Web Services (AWS).
+This is a cloud-based implementation of the Crackling pipeline - for design of efficient and specific CRISPR Cas9 guides. 
+
+Serverless technologies by Amazon Web Services (AWS) are used in this edition of the pipeline.
+
+With thanks to our colleagues at the CSIRO for their support during the development of this edition of the pipeline.
+
+For support, contact Jake Bradford.
 
 
+
+This work was presented at the Annual Conference of the Australian Bioinformatics and Computational Biology Society (2020).
+
+*CRISPR, faster, better - The Crackling method for whole-genome target detection*
 
 Jacob Bradford<sup>1</sup>, Timothy Chappell<sup>1</sup>, Brendan Hosking<sup>2</sup>, Laurence Wilson<sup>2</sup>, Dimitri Perrin<sup>1</sup>
 <sup>1</sup> Queensland University of Technology, Brisbane, Australia 
 <sup>2</sup> Commonwealth Scientific and Industrial Research Organisation (CSIRO), Sydney, Australia 
-
-
 
 ## Preamble
 
@@ -28,11 +36,34 @@ Please refer to our paper when using Crackling:
 >
 > Crackling is available at https://github.com/bmds-lab/Crackling under the Berkeley Software Distribution (BSD) 3-Clause license.
 
-
 ## Installing AWS-CDK in Linux or WSL
 
-```bash
+Using VSCode as your Integrated Development Environment is recommended.
 
+AWS provides documentation that you should read:
+
+- [Configuration and credential file settings](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) (for the AWS CLI)
+
+- [Getting started](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html) (with the CDK)
+
+- [Working with the AWS CDK in Python](https://docs.aws.amazon.com/cdk/v2/guide/work-with-cdk-python.html)
+
+- [The AWS Python API documentation is provided here](https://docs.aws.amazon.com/cdk/api/v1/python/index.html)
+
+- There is a vscode AWS plugin that you may find useful: `amazonwebservices.aws-toolkit-vscode` 
+
+   ```
+    Name: AWS Toolkit
+    Id: amazonwebservices.aws-toolkit-vscode
+    Description: Amazon Web Services toolkit for browsing and updating cloud resources
+    Version: 1.36.0
+    Publisher: Amazon Web Services
+    VS Marketplace Link: https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.aws-toolkit-vscode
+   ```
+
+Follow these instructions to setup the environment. In vscode, You will need to configure a connection to the CDK running in WSL (if applicable).
+
+```bash
 # Install Node Version Manager (nvm)
 $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 
@@ -52,18 +83,22 @@ $ sudo apt-get install python3-venv
 # Initialise a new AWS project
 $ cdk init app --language python
 
+# Enable the virtual environment
+source .venv/bin/activate
+
 # Install the requirements, as defined by the AWS CDK
 $ pip install -r requirements.txt
 
-
+# Useful CDK commands include:
+cdk synth # for creating the CloudFormation template without deploying
+cdk deploy # for deploying the stack via CloudFormation
+cdk destroy # for destroying the stack in CloudFormation
+# add the `--profile` flag to indicate which set of AWS credentials you wish to use, e.g.  `--profile bmds`.
 ```
 
-
-## Architecture
-
-
-
 ## Deployment
+
+### Shared objects (for binaries)
 
 Collect all shared objects needed by compiled binaries.
 
@@ -75,13 +110,7 @@ ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep "=> /" | awk '{print $
 ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
 ```
 
-### Consensus
-
-```
-py -3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
-```
-
-
+### Python modules 
 
 
 The consensus module has Python dependencies that need to be installed.
@@ -120,9 +149,12 @@ cd modules/consensus
 pip freeze > requirements.txt
 ```
 
-## Development
+### Deploying using the CDK
 
-
-
-## References
-
+```bash
+# Useful CDK commands include:
+cdk synth # for creating the CloudFormation template without deploying
+cdk deploy # for deploying the stack via CloudFormation
+cdk destroy # for destroying the stack in CloudFormation
+# add the `--profile` flag to indicate which set of AWS credentials you wish to use, e.g.  `--profile bmds`.
+```
