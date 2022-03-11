@@ -18,7 +18,9 @@ from aws_cdk import (
     aws_apigateway as api_,
     aws_sqs as sqs_,
     aws_dynamodb as ddb_,
-    aws_iam as iam_
+    aws_iam as iam_,
+    aws_s3 as s3_,
+    aws_s3_deployment as s3d_
 )
 
 class CracklingStack(Stack):
@@ -28,6 +30,25 @@ class CracklingStack(Stack):
         ### Virtual Private Cloud
         # VPCs are used for constraining infrastructure to a private network.
         cracklingVpc = ec2_.Vpc(self, "CracklingVpc")
+
+        ### Simple Storage Service (S3) is a key-object store that can host websites.
+        # This bucket is used for hosting the front-end application.
+        s3Frontend = s3_.Bucket(self,
+            "CracklingWebsite",
+            website_index_document="index.html",
+            public_read_access=True,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        s3FrontendDeploy = s3d_.BucketDeployment(
+            self, "DeployFrontend",
+            sources=[
+                s3d_.Source.asset("../frontend")
+            ],
+            destination_bucket=s3Frontend,
+            destination_key_prefix="web/static",
+            retain_on_delete=False
+        )
+        cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
 
         ### Simple Queue Service (SQS) is a queuing service for serverless applications.
         # This queue is for off-target scoring.
