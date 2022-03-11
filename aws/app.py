@@ -17,7 +17,8 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_apigateway as api_,
     aws_sqs as sqs_,
-    aws_dynamodb as ddb_
+    aws_dynamodb as ddb_,
+    aws_iam as iam_
 )
 
 class CracklingStack(Stack):
@@ -154,8 +155,8 @@ class CracklingStack(Stack):
         lambdaTargetScan.add_event_source_mapping(
             "mapLdaTargetScanDdbJobs",
             event_source_arn=ddbJobs.table_stream_arn,
-            retry_attempts=100,
-            starting_position=lambda_.StartingPosition.TRIM_HORIZON
+            retry_attempts=0,
+            starting_position=lambda_.StartingPosition.LATEST
         )
         
 
@@ -214,9 +215,13 @@ class CracklingStack(Stack):
         #s3Frontend = s3_.Bucket.from_bucket
 
         apiRest = api_.RestApi(self, 
-            "RestApi",
+            "CracklingRestApi",
             default_cors_preflight_options=api_.CorsOptions(
                 allow_origins=['*']
+            ),
+            deploy_options=api_.StageOptions(
+                logging_level=api_.MethodLoggingLevel.ERROR,
+                metrics_enabled=True
             )
         ) 
          
@@ -225,70 +230,99 @@ class CracklingStack(Stack):
             .add_resource("{jobid}") \
             .add_resource("targets") # returns an `IResource`
             
-        # # TODO: this probably needs fixing. perhaps try add_proxy
-        # apiResourceResultsIdTargets.add_method( # Adds a `Method` object
-        #     "GET",
-        #     target=api_.Integration( 
-        #         type=api_.IntegrationType.AWS,
-        #         options=api_.IntegrationOptions(
-        #             passthrough_behavior=api_.PassthroughBehavior.WHEN_NO_TEMPLATES,
-        #             request_templates={
-        #                 'application/json' : """
-        #                     {
-        #                         "TableName": "${TargetsTable}",
-        #                         "KeyConditionExpression": "JobID = :v1",
-        #                         "ExpressionAttributeValues": {
-        #                             ":v1": {
-        #                                 "S": "$input.params('jobid')"
-        #                             }
-        #                         }
-        #                     }
-        #                 """
-        #             },
-        #             integration_responses=[
-        #                 api_.IntegrationResponse(
-        #                     status_code='200',
-        #                     response_templates={
-        #                             'application/json' : """#set($allTargs = $input.path('$.Items'))
-        #                         {
-        #                         "recordsTotal": $allTargs.size(),
-        #                         "data" : [
-        #                         #foreach($targ in $allTargs)
-        #                         {
-        #                             "Sequence": "$targ.Sequence.S",
-        #                             "Start": "$targ.Start.N",
-        #                             "End": "$targ.End.N",
-        #                             "Strand": "$targ.Strand.S",
-        #                             "Consensus": "$targ.Consensus.S",
-        #                             "IsslScore": "$targ.IsslScore.S"
-        #                         }#if($foreach.hasNext),#end
-        #                         #end
-        #                         ]
-        #                         }"""
-        #                     },
-        #                     response_parameters={
-        #                         'method.response.header.Access-Control-Allow-Headers' : 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        #                         'method.response.header.Access-Control-Allow-Methods' : 'POST,OPTIONS',
-        #                         'method.response.header.Access-Control-Allow-Origin'  : '*'
-        #                     },
-        #                 )
-        #             ]
-        #         )
-        #     ),
-        #     method_responses=[
-        #         api_.MethodResponse(
-        #             response_models={
-        #                 'application/json' : ''
-        #             },
-        #             response_parameters={
-        #                 'method.response.header.Access-Control-Allow-Headers': 'true',
-        #                 'method.response.header.Access-Control-Allow-Methods': 'true',
-        #                 'method.response.header.Access-Control-Allow-Origin': 'true'
-        #             },
-        #             status_code='200'
-        #         )
-        #     ]
-        # )
+        # TODO: this probably needs fixing. perhaps try add_proxy
+        apiResourceResultsIdTargets.add_method( # Adds a `Method` object
+            "GET",
+            api_.AwsIntegration( 
+                service="dynamodb",
+                action="Query",
+                options=api_.IntegrationOptions(
+                    credentials_role=iam_.Role(
+                        self, "roleApiGetTargetsDdb",
+                        assumed_by=iam_.ServicePrincipal("apigateway.amazonaws.com"),
+                        inline_policies={
+                            'readDynamoDB' : iam_.PolicyDocument(
+                                statements=[
+                                    iam_.PolicyStatement(
+                                        actions=[
+                                            "dynamodb:GetIem",
+                                            "dynamodb:GetRecords",
+                                            "dynamodb:Query"
+                                        ],
+                                        resources=[
+                                            ddbTargets.table_arn
+                                        ],
+                                        effect=iam_.Effect.ALLOW
+                                    )
+                                ]
+                            )
+                        }
+                    ),
+                    passthrough_behavior=api_.PassthroughBehavior.WHEN_NO_TEMPLATES,
+                    request_templates={
+                        'application/json' : (
+                             '{'
+                            f'    "TableName": "{ddbTargets.table_name}",'
+                             '    "KeyConditionExpression": "JobID = :v1",'
+                             '    "ExpressionAttributeValues": {'
+                             '        ":v1": {'
+                             '            "S": "$input.params(\'jobid\')"'
+                             '       }'
+                             '    }'
+                             '}'
+                        )
+                    },
+                    integration_responses=[
+                        api_.IntegrationResponse(
+                            status_code='200',
+                            response_templates={
+                                    'application/json' : (
+                                        "#set($allTargs = $input.path('$.Items'))"
+                                        '{'
+                                        '"recordsTotal": $allTargs.size(),'
+                                        '"data" : ['
+                                        '   #foreach($targ in $allTargs) {'
+                                        '       "Sequence": "$targ.Sequence.S",'
+                                        '       "Start": "$targ.Start.N",'
+                                        '       "End": "$targ.End.N",'
+                                        '       "Strand": "$targ.Strand.S",'
+                                        '       "Consensus": "$targ.Consensus.S",'
+                                        '       "IsslScore": "$targ.IsslScore.S"'
+                                        '   }#if($foreach.hasNext),#end'
+                                        '   #end'
+                                        ']'
+                                        '}'
+                                    )
+                            },
+                            response_parameters={
+                                # double quote the values in this dict, as per the documentation:
+                                #   "You must enclose static values in single quotation marks"
+                                #   https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_apigateway/IntegrationResponse.html#aws_cdk.aws_apigateway.IntegrationResponse.response_parameters
+                                'method.response.header.Access-Control-Allow-Headers' : "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
+                                'method.response.header.Access-Control-Allow-Methods' : "'POST,OPTIONS'",
+                                'method.response.header.Access-Control-Allow-Origin'  : "'*'"
+                            },
+                        )
+                    ]
+                )
+            ),
+            request_parameters={
+                'method.request.path.proxy' : True
+            },
+            method_responses=[
+                api_.MethodResponse(
+                    response_models={
+                        'application/json' : api_.Model.EMPTY_MODEL
+                    },
+                    response_parameters={
+                        'method.response.header.Access-Control-Allow-Headers': True,
+                        'method.response.header.Access-Control-Allow-Methods': True,
+                        'method.response.header.Access-Control-Allow-Origin': True
+                    },
+                    status_code='200'
+                )
+            ]
+        )
 
         # /submit
         apiResourceSubmitJob = apiRest.root.add_resource("submit") # returns an `IResource`
