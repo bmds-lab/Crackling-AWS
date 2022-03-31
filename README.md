@@ -36,6 +36,10 @@ Please refer to our paper when using Crackling:
 >
 > Crackling is available at https://github.com/bmds-lab/Crackling under the Berkeley Software Distribution (BSD) 3-Clause license.
 
+## Architecture
+
+![Crackling-AWS.drawio](Crackling-AWS.drawio.png)
+
 ## Installing AWS-CDK in Linux or WSL
 
 Using VSCode as your Integrated Development Environment is recommended.
