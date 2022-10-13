@@ -1,12 +1,13 @@
-import sys
-import os
-import argparse
+import sys, os, argparse
 from pathlib import Path
 
+# Add paths for where scripts/files are on ec2
 sys.path.insert(0, os.path.join(os.path.abspath(os.sep),'ec2Code','modules'))
 sys.path.insert(0, os.path.join(os.path.abspath(os.sep),'ec2Code','src','crackling','utils'))
 sys.path.insert(0, os.path.join(os.path.abspath(os.sep),'ec2Code','src'))
 sys.path.insert(0, os.path.join(os.path.abspath(os.sep),'ec2Code'))
+
+# import code as modules
 from common_funcs import *
 import bt2Lambda
 import issl_creation
@@ -26,23 +27,27 @@ if __name__== "__main__":
     # return commandline arguments
     args = cliArguments()
 
-    print(args)
-
+    # Create s3_client
     s3_client = boto3.client('s3')
 
+    # Create event and context 
     event, context = main(args['accession'],args['sequence'],args['jobid'])
     
     #Download accession
+    print("Run: accession downloading code.")
     tmp_dir = lambda_downloader.ec2_start(s3_client, event, context)
 
     #bt2
-    bt2Lambda.ec2_start(s3_client,tmp_dir, event, context)
+    print("Run: bowtie2 creation code.")
+    bt2Lambda.ec2_start(s3_client, tmp_dir, event, context)
 
     #issl
-    issl_creation.ec2_start(s3_client,tmp_dir, event, context)
+    print("Run: issl creation code.")
+    issl_creation.ec2_start(s3_client, tmp_dir, event, context)
 
-
+    #close temp fasta file directory
     if os.path.exists(tmp_dir):
+        print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 
-    print("ye boi")
+    print("EC2 Successfully completed.")
