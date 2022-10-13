@@ -1,10 +1,12 @@
 import json
 import boto3
-import os
+import os,re
 import shutil
 import time
 from subprocess import call
 import tempfile
+
+from common_funcs import *
 
 shutil.copy("/opt/isslScoreOfftargets", "/tmp/isslScoreOfftargets")
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
@@ -41,11 +43,16 @@ def CalcIssl(targets, genome):
         fp.write("\n".join([targets[x]['Seq20'] for x in targets]))
         fp.write("\n")
 
+    # download from s3 based on accession
+    s3_client = boto3.client('s3')
+    s3_bucket = os.environ['BUCKET']
+    tmp_dir, issl_file = s3_accession_to_tmp(s3_client,s3_bucket,genome,".issl")
+
     # call the scoring method
     caller(
         ["{} \"{}\" \"{}\" \"{}\" \"{}\" > \"{}\"".format(
             BIN_ISSL_SCORER,
-            OFFTARGETS_INDEX_MAP[genome],
+            issl_file, #OFFTARGETS_INDEX_MAP[genome],
             tmpToScore.name,
             '4',
             '75',
@@ -53,6 +60,8 @@ def CalcIssl(targets, genome):
         )],
         shell = True
     )
+
+    print('yeee')
 
     with open(tmpScored.name, 'r') as fp:
         for targetScored in [x.split('\t') for x in fp.readlines()]:

@@ -31,6 +31,7 @@
 				// Prepare interface
 				$('.tabs').tabs();
 				$('#sequence').characterCounter();
+				$('#genome').characterCounter();
 				$('.tooltipped').tooltip();
 				$('.collapsible').collapsible();
 				$('select').formSelect();
@@ -45,11 +46,21 @@
 						M.toast({html: 'Your query sequence should only contain the letters of the genomic alphabet (ATCG).'});
 						return 0;
 					}
+
+					var regex2 = new RegExp("^G[A-Z]{2}_[0-9]{9}.[0-9]+");
+					if (!regex2.test($('#genome').val())) {
+						M.toast({html: 'Your genome accession should be in GXX_XXXXXXXXX.X form. The virus accession form is not currently supported.'});
+						return 0;
+					}
 					
 					//if ($('#genome').val() != "") {
 					//	M.toast({html: 'You must select a genome for off-target scoring.'});
 					//	return 0;
 					//}
+					console.log(JSON.stringify({
+							'sequence' 	: $('#sequence').val(),
+							'genome'	: $('#genome').val()
+						}))
 				
 					$.ajax({
 						url: API + '/submit', 
@@ -219,16 +230,14 @@
 								<label for="sequence">Query sequence</label>
 							</div>
 							</br>
-							<div class="input-field col s12 tooltipped" data-position="bottom" data-tooltip="Download Crackling standalone to analyse other genomes (or contact us)">
-								<select name="genome" id="genome">
-									<option disabled>Select a genome</option>
-									<option selected value="SARS_COV_2">SARS-COV-2 (NC_045512.2)</option>
-								</select> 
-								<label>Genome</label>
+							<div class="input-field col s12">
+								<textarea id="genome" name="genome" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste Your NCBI genome accession here">GCA_000482205.1</textarea>
+								<label for="genome">Genome Accession</label>
 							</div>
-
-							</br>
-
+							<div>
+							<a href="https://www.ncbi.nlm.nih.gov/genome/browse#!/overview/">Link: NCBI genome browser</a>
+							</div>
+							
 							<button class="btn waves-effect waves-light tooltipped" type="button" name="btnSubmitJob" id="btnSubmitJob" data-position="bottom" data-tooltip="Save your Job ID when it appears!">
 								Submit job
 								<i class="material-icons right">send</i>

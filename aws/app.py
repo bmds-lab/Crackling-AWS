@@ -23,16 +23,17 @@ from aws_cdk import (
     aws_dynamodb as ddb_,
     aws_iam as iam_,
     aws_s3 as s3_,
-    aws_s3_deployment as s3d_
+    aws_s3_deployment as s3d_,
+    aws_s3_notifications as s3_notify,
 )
-
+version = "Mackv1"
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
         ### Virtual Private Cloud
         # VPCs are used for constraining infrastructure to a private network.
-        cracklingVpc = ec2_.Vpc(self, "CracklingVpc")
+        cracklingVpc = ec2_.Vpc(self, f"CracklingVpc{version}")
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
@@ -48,7 +49,7 @@ class CracklingStack(Stack):
                 s3d_.Source.asset("../frontend")
             ],
             destination_bucket=s3Frontend,
-            destination_key_prefix="web/static",
+            # destination_key_prefix="web/static",
             retain_on_delete=False
         )
         cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
@@ -56,10 +57,10 @@ class CracklingStack(Stack):
         ### Simple Queue Service (SQS) is a queuing service for serverless applications.
         # This queue is for off-target scoring.
         # The TargetScan lambda function adds guides to this queue for processing
-        # The Issl lambda function processes items in this queue
-        sqsIssl = sqs_.Queue(self, "sqsIssl", 
-            receive_message_wait_time=Duration.seconds(20)
-        )
+        # # The Issl lambda function processes items in this queue
+        # sqsIssl = sqs_.Queue(self, "sqsIssl", 
+        #     receive_message_wait_time=Duration.seconds(20)
+        # )
 
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
@@ -138,6 +139,35 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
+        ### Mackenzie Added layers
+        # This layer provides the bowtie2 "binaries"/script files
+        lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
+            code=lambda_.Code.from_asset("../layers/bt2Bin"),
+            removal_policy=RemovalPolicy.DESTROY,
+            compatible_architectures=[lambda_.Architecture.X86_64]
+        )
+        ### This layer provides an updated version of the libstdc++ library required for bowtie2
+        lambdaLayerBt2Lib = lambda_.LayerVersion(self, "bt2Lib",
+            code=lambda_.Code.from_asset("../layers/bt2Lib"),
+            removal_policy=RemovalPolicy.DESTROY,
+            compatible_architectures=[lambda_.Architecture.X86_64]
+        )
+        ### This layer contains a python module of commonly used functions across the lambdas
+        lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
+            code=lambda_.Code.from_asset("../layers/commonFuncs"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        ### Layer containing ncbi.datasets module and dependencies
+        lambdaLayerNcbi = lambda_.LayerVersion(self, "ncbi",
+            code=lambda_.Code.from_asset("../layers/ncbi"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        ### Layer containing the python script and binary required for building issl indices
+        lambdaLayerIsslCreation = lambda_.LayerVersion(self, "isslCreationLayer",
+            code=lambda_.Code.from_asset("../layers/isslCreation"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
+
         ### Lambda function that acts as the entry point to the application.
         # This function creates a record in the DynamoDB jobs table.
         # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
@@ -147,13 +177,182 @@ class CracklingStack(Stack):
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/createJob"),
             layers=[lambdaLayerPythonPkgs],
-            #vpc=cracklingVpc,
+            vpc=cracklingVpc,# was this meant to be left commented
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000'
             }
         )
         ddbJobs.grant_read_write_data(lambdaCreateJob)
+
+        ### Slot in new lambdas here
+
+        # New S3 Bucket
+        s3Genome = s3_.Bucket(self,"genomeStorage")
+
+        #
+        ld_library_path = ("/opt/libs:/lib64:/usr/lib64:$LAMBDA_RUNTIME_DIR:"
+        "$LAMBDA_RUNTIME_DIR/lib:$LAMBDA_TASK_ROOT:$LAMBDA_TASK_ROOT/lib:/opt/lib")
+        path = "/usr/local/bin:/usr/bin/:/bin:/opt/bin"
+        duration = Duration.minutes(15)
+        
+        # -> SQS queues
+        sqsDownload = sqs_.Queue(self, "sqsDownload", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        sqsBowtie2 = sqs_.Queue(self, "sqsBowtie2", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        sqsIsslCreaton = sqs_.Queue(self, "sqsIsslCreaton", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        sqsTargetScan = sqs_.Queue(self, "sqsTargetScan", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        sqsIssl = sqs_.Queue(self, "sqsIssl", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        # sqsIssl = sqs_.Queue(self, "sqsIssl", 
+        #     receive_message_wait_time=Duration.seconds(1),
+        #     visibility_timeout=duration,
+        #     retention_period=duration
+        # )
+
+        # Lambda Scheduler
+        lambdaScheduler = lambda_.Function(self, "scheduler", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.handler",
+            code=lambda_.Code.from_asset("../modules/scheduler"),
+            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
+            vpc=cracklingVpc,
+            environment={
+                'QUEUE' : sqsDownload.queue_url,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+        ddbJobs.grant_stream_read(lambdaScheduler)
+        sqsDownload.grant_send_messages(lambdaScheduler)
+        lambdaScheduler.add_event_source_mapping(
+            "mapLdaSchedulerDdbJobs",
+            event_source_arn=ddbJobs.table_stream_arn,
+            retry_attempts=0,
+            starting_position=lambda_.StartingPosition.LATEST
+        )
+        
+        # Lambda Downloader
+        lambdaDownloader = lambda_.Function(self, "downloader", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/downloader"),
+            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'MAX_SEQ_LENGTH' : '20000',
+                'BUCKET' : s3Genome.bucket_name,
+                'ISSL_QUEUE' : sqsIsslCreaton.queue_url,
+                'BT2_QUEUE' : sqsBowtie2.queue_url,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+        ddbJobs.grant_read_write_data(lambdaDownloader)
+        sqsIsslCreaton.grant_send_messages(lambdaDownloader)
+        sqsBowtie2.grant_send_messages(lambdaDownloader)
+        sqsDownload.grant_consume_messages(lambdaDownloader)
+        lambdaDownloader.add_event_source_mapping(
+            "mapLdaSqsDownload",
+            event_source_arn=sqsDownload.queue_arn,
+            batch_size=1
+        )
+        s3Genome.grant_read_write(lambdaDownloader)        
+
+        # -> -> bt2
+        lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/bowtie2"),
+            layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'BUCKET' : s3Genome.bucket_name,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+        s3Genome.grant_read_write(lambdaBowtie2)
+        sqsBowtie2.grant_consume_messages(lambdaBowtie2)
+        lambdaBowtie2.add_event_source_mapping(
+            "mapLdaSqsBowtie",
+            event_source_arn=sqsBowtie2.queue_arn,
+            batch_size=1
+        )
+
+        # -> -> issl_creation
+        lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslCreation"),
+            layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                # 'TARGETS_TABLE' : ddbTargets.table_name,
+                # 'JOBS_TABLE' : ddbJobs.table_name,
+                'BUCKET' : s3Genome.bucket_name,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+        s3Genome.grant_read_write(lambdaIsslCreation)
+        sqsIsslCreaton.grant_consume_messages(lambdaIsslCreation)
+        lambdaIsslCreation.add_event_source_mapping(
+            "mapppIsslCreation",
+            event_source_arn=sqsIsslCreaton.queue_arn,
+            batch_size=1
+        )
+
+        # s3-triggered lambda to SQS to targetScan
+        # https://aws.plainenglish.io/trigger-lambda-on-s3-events-using-cdk-763e2a292113
+        lambdaS3Check = lambda_.Function(self, "s3Check", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/s3Check"),
+            layers=[lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            environment={
+                'QUEUE' : sqsTargetScan.queue_url,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+        s3Genome.grant_read_write(lambdaS3Check)
+        # Create trigger for Lambda function using suffix
+        notification = s3_notify.LambdaDestination(lambdaS3Check)
+        notification.bind(self, s3Genome)        
+        # Add Create Event only for .jpg files
+        s3Genome.add_object_created_notification(
+           notification, s3_.NotificationKeyFilter(suffix='.notif'))
+        sqsTargetScan.grant_send_messages(lambdaS3Check)
 
         ### Lambda function that scans a sequence for CRISPR sites.
         # This function is triggered when a record is written to the DynamoDB jobs table.
@@ -164,25 +363,29 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/targetScan"),
-            layers=[lambdaLayerPythonPkgs],
+            layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
-                'ISSL_QUEUE' : sqsIssl.queue_url
+                'ISSL_QUEUE' : sqsIssl.queue_url,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
             }
         )
+        sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
-        ddbJobs.grant_stream_read(lambdaTargetScan)
         sqsConsensus.grant_send_messages(lambdaTargetScan)
+        # s3Genome.grant_read_write(lambdaTargetScan)
         sqsIssl.grant_send_messages(lambdaTargetScan)
         lambdaTargetScan.add_event_source_mapping(
-            "mapLdaTargetScanDdbJobs",
-            event_source_arn=ddbJobs.table_stream_arn,
-            retry_attempts=0,
-            starting_position=lambda_.StartingPosition.LATEST
-        )
-        
+            "mapSqsTargetScan",
+            event_source_arn=sqsTargetScan.queue_arn,
+            batch_size=1
+        )        
 
         ### Lambda function to assess guide efficiency
         # This function consumes messages in the SQS consensus queue.
@@ -193,6 +396,9 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url
@@ -215,12 +421,18 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/issl"),
-            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerIsslIdxs],
+            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
+                'BUCKET' : s3Genome.bucket_name,
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
-                'ISSL_QUEUE' : sqsIssl.queue_url
+                'ISSL_QUEUE' : sqsIssl.queue_url,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
@@ -231,6 +443,7 @@ class CracklingStack(Stack):
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
+        s3Genome.grant_read_write(lambdaIssl)
 
         ### API
         # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
@@ -359,5 +572,9 @@ class CracklingStack(Stack):
 
 
 app = cdk.App()
-CracklingStack(app, "CracklingStackProd")
+CracklingStack(app, f"CracklingStack{version}")
 app.synth()
+
+# 12:23:17 PM | CREATE_FAILED        | AWS::Lambda::EventSourceMapping       | bowtie2/mapLdaSqsBowtie
+# Resource handler returned message: "Invalid request provided: Queue visibility timeout: 30 seconds is less than Function timeout: 900 seconds (Service: Lambda, Status Code: 4
+# 00, Request ID: faa2fa8e-9e00-4960-8c00-bbaaa5dfd967)" (RequestToken: ea14af8f-d336-08f7-bf48-8fa95e82948a, HandlerErrorCode: InvalidRequest)

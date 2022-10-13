@@ -4,3 +4,8 @@ layers/consensusPy38Pkgs/*
 *.venv
 *.zip
 cdk.out
+aws/aws/dist/
+aws/aws/install
+aws/aws/README.md
+aws/aws/THIRD_PARTY_LICENSES
+layers/ncbi/*

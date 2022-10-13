@@ -3,6 +3,8 @@ import boto3, os, re, json
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
+from common_funcs import *
+
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
@@ -118,23 +120,26 @@ def lambda_handler(event, context):
     # events: insertions and deletions.
     # See: https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html
     #required = {'JobID': 'S', 'Genome': 'S', 'Chromosome': 'S', 'Location': 'N', 'Sequence': 'S'}
-    required = {'JobID': 'S', 'Sequence': 'S'}
+    # required = {'JobID': 'S', 'Sequence': 'S'}
 
-    inserted = [r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
-    for i in inserted:
-        try:
-            jobid = i['JobID']['S']
-            params = {p: i[p][required[p]] for p in required}
-            params['Sequence'] = clean_candidate_sequence(params['Sequence'])
-        except:
-            return 'Entry contains invalid information'
-        find_targets(params)
+    # inserted = [r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
+    # for i in inserted:
+    #     try:
+    #         jobid = i['JobID']['S']
+    #         params = {p: i[p][required[p]] for p in required}
+    #         params['Sequence'] = clean_candidate_sequence(params['Sequence'])
+    #     except:
+    #         return 'Entry contains invalid information'
+
+
+    params,body = recv(event)
+    find_targets(params)
         #print('Processed INSERT event for {}.'.format(jobid))
         
-    removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
-    for r in removed:
-        jobid = r['JobID']['S']
-        deleteCandidateTargets(jobid)
+    # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
+    # for r in removed:
+    #     jobid = r['JobID']['S']
+    #     deleteCandidateTargets(jobid)
         #print('Processed REMOVE event for {}.'.format(jobid))
     
     return None #'Completed {} tasks.'.format(len(inserted) + len(removed))

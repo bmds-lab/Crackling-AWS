@@ -40,13 +40,14 @@ def lambda_handler(event, context):
         elif len(sequence) > int(MAX_SEQ_LENGTH):
             return return_http_json(400, f'The specified sequence is too long (max length = {MAX_SEQ_LENGTH})', ['sequence'])
 
-    if 'genome' in job_request:
-        if job_request['genome'] in GENOMES_MAP:
-            genome = GENOMES_MAP[job_request['genome']]
-        else:
-            return return_http_json(400, 'Invalid genome selected')
-    else:
-        return return_http_json(400, 'No genome selected')
+    # if 'genome' in job_request:
+    #     if job_request['genome'] in GENOMES_MAP:
+    #         genome = GENOMES_MAP[job_request['genome']]
+    #     else:
+    #         return return_http_json(400, 'Invalid genome selected')
+    # else:
+    #     return return_http_json(400, 'No genome selected')
+    genome = job_request['genome']
 
     jobid = str(uuid.uuid4())
     #jobid = str(int(time.time()))
@@ -63,7 +64,8 @@ def lambda_handler(event, context):
     
     body = json.dumps({
         'aws_request_id' : context.aws_request_id,
-        'JobID' : jobid
+        'JobID' : jobid,
+        'Genome' : genome # for debug
     })
 
     return {
