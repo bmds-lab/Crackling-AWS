@@ -18,11 +18,8 @@ def cliArguments():
                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     #required argument
     parser.add_argument("accession", help="specify accession")
-    #optional
-    parser.add_argument("-d","--directory", help="specify directory", default ="default")
-    parser.add_argument("--bowtie2-build", action="store_true", help="build bowtie2")
-    parser.add_argument("--issl-idx", action="store_true", help="create ISSL index")
-    parser.add_argument("--clean", action="store_true", help="delete tmp files, including zip")
+    parser.add_argument("sequence", help="specify accession")
+    parser.add_argument("jobid", help="specify accession")
     return vars(parser.parse_args())
 
 if __name__== "__main__":
@@ -33,17 +30,16 @@ if __name__== "__main__":
 
     s3_client = boto3.client('s3')
 
-    event, context = main(args['accession'])
-    # os.environ["accession"] = args['accession']
+    event, context = main(args['accession'],args['sequence'],args['jobid'])
     
     #Download accession
     tmp_dir = lambda_downloader.ec2_start(s3_client, event, context)
 
     #bt2
-    bt2Lambda.ec2_start(s3_client, event, context)
+    bt2Lambda.ec2_start(s3_client,tmp_dir, event, context)
 
     #issl
-    issl_creation.ec2_start(s3_client, event, context)
+    issl_creation.ec2_start(s3_client,tmp_dir, event, context)
 
 
     if os.path.exists(tmp_dir):
