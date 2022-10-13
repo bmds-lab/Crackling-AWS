@@ -1,7 +1,5 @@
-import urllib.parse
-import boto3
-import os
-import re
+import urllib.parse, boto3, os
+
 from pathlib import Path
 from botocore.exceptions import ClientError
 
@@ -13,8 +11,6 @@ QUEUE = os.environ['QUEUE']
 
 def filetest(s3_bucket,key):
     try:
-        # s3.head_object(Bucket=s3_bucket, Key=key)
-        # return True
         file_content = s3_client.get_object(Bucket=s3_bucket, Key=key)["Body"].read()
         return file_content
     except ClientError:
@@ -34,10 +30,10 @@ def lambda_handler(event, context):
 
         # test what bucket key is and if other lambda has finished
         if "bt2" in key:
-            print(f"\"{issltest}\" exists.\nTesting to see if \"{bt2test}\" is present.")
+            print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
             file_content = filetest(bucket,issltest)
         elif "issl" in key:
-            print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
+            print(f"\"{issltest}\" exists.\nTesting to see if \"{bt2test}\" is present.")
             file_content = filetest(bucket,bt2test)
         
         # if both lambdas have finished, Send and SQS message

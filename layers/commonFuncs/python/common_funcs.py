@@ -57,7 +57,7 @@ def create_csv_if_not_exist(s3_client, s3_bucket, filename):
         file.close()
 
 def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
-    str = f'\n{datetime.now()},{accession},{filesize},{Time}'
+    string = f'\n{datetime.now()},{accession},{filesize},{Time}'
     file = tempfile.NamedTemporaryFile()
     
     #file lock
@@ -80,13 +80,13 @@ def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
         f.close()
         
         f = open(file.name, 'a')
-        f.write(str)
+        f.write(string)
         f.close()
         
         s3_client.upload_file(file.name, s3_bucket, csv_fn)
         s3_unlock(s3_client,s3_bucket,lock_key)
         time_2 = time()
-        print(f'\nAppending to csv: {str}\n')
+        print(f"Appending to csv: \"{string}\"")
         print(f'Time to append s3file: {(time_2-time_1)} sec.')
     file.close()
 
@@ -152,8 +152,8 @@ def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock
     delay = 0 if delay < 0 else delay
     sleep(delay)
     testtime = time_ns()
-    str = f'Your out of touch I\'m out of time(exec time > {testtime - starttime})'
-    s3_csv_append(s3_client, s3_bucket, accession, filesize, str, csv_fn, lock_key)
+    string = f'Your out of touch I\'m out of time(exec time > {testtime - starttime})'
+    s3_csv_append(s3_client, s3_bucket, accession, filesize, string, csv_fn, lock_key)
 
 def sendSQS(sqsURL,msg):
     sqs = boto3.client('sqs')

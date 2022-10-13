@@ -54,7 +54,6 @@ def isslcreate(accession, chr_fns, tmp_fasta_dir):
     issl_path = os.path.join(tmp_dir,f"{accession}.issl")
     
     time_1 = time()
-    print(f"Running: \"{isslArgs}\"")
     os.system(f"{isslBin} {offtargetfn} 20 8 {issl_path}")
     time_2 = time()
     print(f"\n\nTime to create issl index: {(time_2-time_1)}.\n")
@@ -99,7 +98,7 @@ def lambda_handler(event, context):
     s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
     #close temp fasta file directory
-    if os.path.exists(tmp_dir) and not ec2:
+    if not ec2 and os.path.exists(tmp_dir):
         print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 

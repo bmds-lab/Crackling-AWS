@@ -339,6 +339,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/s3Check"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            timeout= duration,
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,

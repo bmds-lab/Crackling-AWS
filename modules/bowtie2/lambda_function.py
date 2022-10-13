@@ -86,7 +86,7 @@ def lambda_handler(event, context):
     s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
     #close temp fasta file directory
-    if os.path.exists(tmp_dir) and not ec2:
+    if not ec2 and os.path.exists(tmp_dir):
         print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 
