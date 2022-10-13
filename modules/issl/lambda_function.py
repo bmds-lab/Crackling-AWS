@@ -46,7 +46,7 @@ def CalcIssl(targets, genome):
     # download from s3 based on accession
     s3_client = boto3.client('s3')
     s3_bucket = os.environ['BUCKET']
-    tmp_dir, issl_file = s3_accession_to_tmp(s3_client,s3_bucket,genome,".issl")
+    tmp_dir, issl_file = s3_files_to_tmp(s3_client,s3_bucket,genome,".issl")
 
     # call the scoring method
     caller(

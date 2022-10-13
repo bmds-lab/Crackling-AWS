@@ -1,24 +1,14 @@
-import boto3
-import os
-import io
-import re
-import shutil
-import tempfile, json
+import os, re, shutil, tempfile, boto3, json
 
 from time import time, time_ns, sleep
 from datetime import datetime
 from botocore.exceptions import ClientError
 
+# Time variable for faux-context
 starttime = time_ns()
+timeout = 10800
 
-# try:
-#     s3_bucket = os.environ['BUCKET']
-# except:
-#     s3_bucket = 'macktest'
-
-# main
-timeout = 900
-# s3_try_lock
+# s3_try_lock variables
 s3_lock_attempts = 15
 lock_delay = 0.15
 
@@ -96,38 +86,32 @@ def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
         s3_client.upload_file(file.name, s3_bucket, csv_fn)
         s3_unlock(s3_client,s3_bucket,lock_key)
         time_2 = time()
-        print(f'\nAppending to csv:{str}\n')
+        print(f'\nAppending to csv: {str}\n')
         print(f'Time to append s3file: {(time_2-time_1)} sec.')
     file.close()
 
-def s3_dir_size(s3_client,s3_bucket,path):
+def s3_fasta_dir_size(s3_client,s3_bucket,path):
     filesize = 0
     paginator = s3_client.get_paginator("list_objects_v2")
     response = paginator.paginate(Bucket=s3_bucket, Prefix=path, 
         PaginationConfig={"PageSize": 1000})
-    # print(response[0])
     for page in response:
-        # print("getting 2 files from S3")
         files = page.get("Contents")
         for file in files:
-            # print(f"file_name: {file['Key']}, size: {file['Size']}")
             if ".fa" in file['Key']:
                 filesize += file['Size']
     return filesize
 
-def s3_accession_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
+def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
     tmpArr = tempfile.mkdtemp()
     names = []
     print(s3_bucket)
     paginator = s3_client.get_paginator("list_objects_v2")
     response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
         PaginationConfig={"PageSize": 1000})
-    # print(response[0])
     for page in response:
-        # print("getting 2 files from S3")
         files = page.get("Contents")
         for file in files:
-            # print(f"file_name: {file['Key']}, size: {file['Size']}")
             filename = file['Key']
             if suffix in filename:
                 # get file name
@@ -137,12 +121,16 @@ def s3_accession_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
                 #download file from s3    
                 file_content = s3_client.get_object(
                     Bucket=s3_bucket, Key=filename)["Body"].read()
-                #write files to memory
-                f = open(name, 'wb') #tempfile.NamedTemporaryFile()
+                # write files to tmp
+                f = open(name, 'wb')
                 f.write(file_content)
                 f.close()
                 print(f"Downloaded to: {name}")
-    print("tmpArr:",tmpArr)
+    print("Files from s3 bucket: ",tmpArr)
+    return tmpArr, ','.join(names)
+
+def list_tmp(tmp_dir):
+    print("Files in tmp directory: ",tmp_dir)
     return tmpArr, ','.join(names)
 
 def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
@@ -160,9 +148,7 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
 
 def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key):
     testtime = time_ns()
-    print("context.get_remaining_time_in_millis()",context.get_remaining_time_in_millis())
     delay = context.get_remaining_time_in_millis()*.995-(s3_lock_attempts*lock_delay*1000)
-    print("delay",delay)
     delay = 0 if delay < 0 else delay
     sleep(delay)
     testtime = time_ns()
@@ -175,13 +161,6 @@ def sendSQS(sqsURL,msg):
         QueueUrl=sqsURL,
         MessageBody=msg
     )
-# https://boto3.amazonaws.com/v1/documentation/api/latest/guide/sqs.html
-#     queue.send_message(MessageBody='boto3', MessageAttributes={
-#     'Author': {
-#         'StringValue': 'Daniel',
-#         'DataType': 'String'
-#     }
-# })
 
 def recv(event):
     for record in event['Records']:
@@ -194,37 +173,16 @@ def recv(event):
     
     return json_obj,record['body']
 
+# Create context and event to run lambda_handlers
 def main(genome,sequence,jobid):
-
     dictionary ={ 
-    "Genome": genome, 
-    "Sequence": sequence, 
-    "JobID": jobid
+        "Genome": genome, 
+        "Sequence": sequence, 
+        "JobID": jobid
     }
     json_object = json.dumps(dictionary)
-    print('This should not run on a Lambda, this is for testing on local systems.')
-    event = {
-        "Records":[
-            {
-                "messageId":"85fc71a8-2817-4edb-b3a2-a89aea5e7806",
-                "receiptHandle":"AQEBoopy9QhT1saFsmDKUj5ztI1yhY0oLLbTeWBen0XQLzgPMOAWe6KSizxtBkRM+96CTZWDkuQw8sLVXD+Q8hdVWIsZlLnnBigCsPlsMLmn5VdT+vmtXwMrXesQx+y4xd2WFY5YDO+YvbuJdNJAmA3Bz1LbYehPjboldpKxJGEMDhnQl8d7Dp7tixP7Fm5d4Rj15GqnO4mQ41HPnLt/B8p50tIiIGZDwPf/xl20bUGD9ndxx5Hrl30JMRRMNOCLtmOl3Un/lxQld7crF6JMVPOQS/AgRd3tsQTzB6KyV9LorlgKtRSS+/QxsMyoHzUCe/Krp0JC967bhFIYOM9NjWwiiEFtneSyBOBwaBd3Rl3YkdCYsXRiSXJlBDlysm/9wCsc9wUjBfuVzybt2cKJVsnOko21TpsyEjiHYW74yW6r79mmOxBjw+Hk0slEbIktmeQ7oWZ0i2xJfldC0mNEJr9uDw==",
-                "body":json_object,
-                "attributes":{
-                    "ApproximateReceiveCount":"1",
-                    "SentTimestamp":"1665632813583",
-                    "SenderId":"AROAVPURMR73MJCJZ245Y:CracklingStackMackv1-schedulerEDBED1F9-LbH1NMJs8fRn",
-                    "ApproximateFirstReceiveTimestamp":"1665632813594"
-                },
-                "messageAttributes":{
-                    
-                },
-                "md5OfBody":"1876c35c59bf95da1cb597933ae3c3f8",
-                "eventSource":"aws:sqs",
-                "eventSourceARN":"arn:aws:sqs:ap-southeast-2:377188290550:CracklingStackMackv1-sqsDownloadCF37D907-OIS8F1z1h3mk",
-                "awsRegion":"ap-southeast-2"
-            }
-        ]   
-    }
+    event = { "Records": [{"body":json_object,}] }
+
     class Contextsim:
         def __init__(self):
             self.data = []
@@ -233,7 +191,4 @@ def main(genome,sequence,jobid):
     context = Contextsim()
     print(context.get_remaining_time_in_millis())
 
-    dataset_bin = '/config/genomes/datasets'
-
     return event, context
-    # lambda_handler(event, context)

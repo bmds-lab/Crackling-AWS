@@ -1,40 +1,23 @@
-import sys
-import re
-import os
-import shutil
-import zipfile
-import tempfile
-import json
-import boto3
-import subprocess as sp
+import sys, re, os, shutil, zipfile, tempfile, boto3
+
 from threading import Thread
-from botocore.exceptions import ClientError, ParamValidationError
+from time import time, time_ns
+from botocore.exceptions import ParamValidationError
 
-try:
-    from common_funcs import *
-except:
-    sys.path.insert(0, '/config/common_funcs/python')
-    from common_funcs import *
-
-from time import time, sleep
-
-from datetime import datetime
+from common_funcs import *
 
 try:
     import ncbi.datasets
 except ImportError:
     print('ncbi.datasets module not found. To install, run `pip install ncbi-datasets-pylib`.')
 
-# try:
+# Global variables
 s3_bucket = os.environ['BUCKET']
-# except:
-#     s3_bucket = 'macktest'
+ec2 = False
+starttime = time_ns()
 
 # Create S3 client
 s3_client = boto3.client('s3')
-
-dataset_bin = 'idk'
-ec2 = False
 
 def clean_s3_folder(accession):
     try:
@@ -70,7 +53,6 @@ def dl_accession(accession):
     dl_response = genome_api.download_assembly_package(
         accessions = [accession],
         exclude_sequence = False,
-        # include_annotation_type = ['DEFAULT'],
         _preload_content = False )
 
     #Save Zip File
@@ -86,10 +68,8 @@ def dl_accession(accession):
     except: 
         zip_file.close()
         return f'"Download failed..."',0,0
-        # sys.exit() 
     
     chr_fns = []
-
 
     # Unzip file
     print("\nUnzipping file...", end='')
@@ -128,12 +108,9 @@ def dl_accession(accession):
         clean_s3_folder(accession)
         print()
         return f'Unzipping file/s failed: {e}',0,0
-        # sys.exit("Unzipping file/s failed...")
 
     # Get rid of tmp file
     zip_file.close()
-
-    # TODO Add Checksum calc
 
     return tmp_dir, ','.join(chr_fns), time_2-time_1
 
@@ -143,62 +120,57 @@ def sum_filesize(accession):
     api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
     genome_summary = api_instance.assembly_descriptors_by_accessions(assembly_accessions, page_size=1)
 
-    type(genome_summary)
-
     print(f"Number of assemblies: {genome_summary.total_count}")
     
-    sum1 = 0
+    sum = 0
     try:
         for a in genome_summary.assemblies[0].assembly.chromosomes:
-            sum1 = sum1 + int(a.length)
+            sum = sum + int(a.length)
     except:
-        print("genome is missing data")
-    
-    print(f" The sum of the chromosome length is {sum1}")
-    
-    return sum1
+        print("Genome is missing filesize data")
+    print(f" The sum of the chromosome length is {sum}")
+    return sum
+
 
 def lambda_handler(event, context):
-    
-    print(event)
     args,body = recv(event)
     accession = args['Genome']
+
     if accession == 'fail':
-        sys.exit('big rip')
-        
-    # global acc 
-    # acc = args['accession']
+        sys.exit('Error: No accession found.')
     
-    # global fsz
+    # Get file size for 
     filesize = sum_filesize(accession)
-    # fsz = filesize
+
     csv_fn = 'times.csv'
     lock_key = 'lock_key'
-    # thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key)
+
     # Create new threads
     thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
     thread1.daemon = True
     thread1.start()
+
     # Download accession
     tmp_dir, chr_fns,time = dl_accession(accession)
     
-    
-    # if filesize == 0:
-    #     time = "download failed accession invalid"
-    
+    # if download fails update string for csv
     if 'fail' in tmp_dir:
         time = tmp_dir
     
-    s3_csv_append(s3_client,s3_bucket,accession,filesize,time,csv_fn,lock_key)
+    # Add run to s3 csv for logging
+    s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
     #close temp fasta file directory
     if os.path.exists(tmp_dir) and not ec2:
-        print("Cleaning up tmp path")
+        print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 
+    # if running on ec2, return early with tmp directory
     if ec2:
+        print("All Done... Terminating Program.")
         return tmp_dir
 
+    # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     BT2_QUEUE = os.getenv('BT2_QUEUE')
     sendSQS(ISSL_QUEUE,body)
@@ -206,7 +178,7 @@ def lambda_handler(event, context):
         
     print("All Done... Terminating Program.")
 
-
+# ec2 instance code entry and setup function
 def ec2_start(s3_Client, event, context):
     global s3_client
     s3_client = s3_Client
