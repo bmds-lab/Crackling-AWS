@@ -2,7 +2,7 @@ import json
 import boto3
 import os,re
 import shutil
-import time
+from time import time_ns
 from subprocess import call
 import tempfile
 
@@ -60,8 +60,6 @@ def CalcIssl(targets, genome):
         )],
         shell = True
     )
-
-    print('yeee')
 
     with open(tmpScored.name, 'r') as fp:
         for targetScored in [x.split('\t') for x in fp.readlines()]:
@@ -183,7 +181,7 @@ def lambda_handler(event, context):
             QueueUrl=issl_queue_url,
             Entries=[
                 {
-                    'Id': f"{time.time_ns()}",
+                    'Id': f"{time_ns()}",
                     'ReceiptHandle': delete
                 }
                 for delete in toDelete

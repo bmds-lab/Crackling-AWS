@@ -131,6 +131,7 @@ def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
 
 def list_tmp(tmp_dir):
     print("Files in tmp directory: ",tmp_dir)
+    tmpArr = os.listdir(tmp_dir)
     return tmpArr, ','.join(names)
 
 def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
