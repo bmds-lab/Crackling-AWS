@@ -194,27 +194,36 @@ def recv(event):
     
     return json_obj,record['body']
 
-def main(accession):
+def main(genome,sequence,jobid):
+
+    dictionary ={ 
+    "Genome": genome, 
+    "Sequence": sequence, 
+    "JobID": jobid
+    }
+    json_object = json.dumps(dictionary)
     print('This should not run on a Lambda, this is for testing on local systems.')
     event = {
-        "Records": [
+        "Records":[
             {
-            "messageId": "b688ac38-d0da-462f-a99d-4a89c94edbd0",
-            "receiptHandle": "AQEBgG2u6GKrt3InnHQBhZJf4i2MUD9pApPwYXsm3ZTZIBDxMuU9x7T7dJIauSSo8Cc5xJrUx7kSV46f0X7Hg3BKwnxMgvN8P6ZNvxHCI+NSFOgX+M493A8+IqGnx0zTwyJkiB267tmqGyBOgM1S7mSYpYLMsrvFpt0+zJxuFlenEa7TlYSpBPIcBwDpLUpsJUealusXOmszrb+86pXMhkuxiTD/glkLg1V3+w1RZ0PZEPFir4lrU0lWEX3IvEfZHLE9DG2TE9QtNRjQ8Fhh//3GtHY7lPrUqgI/KK5JrYhrLl9uCF5jilQgA3gW9ut9VsrJBEcCC0pc25Tb1br5ZQRuvBRUthPx5fsf3d9+C7aiIfmG4Y6AZ1Kwt6iyCQV9i8+6EvPqBaHRs0oQ9iP2uryZjw==",
-            "body": accession,
-            "attributes": {
-                "ApproximateReceiveCount": "1",
-                "SentTimestamp": "1660624595423",
-                "SenderId": "AROAVPURMR73HNIE3X3NN:BenchmarkLambda",
-                "ApproximateFirstReceiveTimestamp": "1660624595443"
-            },
-            "messageAttributes": {},
-            "md5OfBody": "034039ceaa0f1a83717103149a1ff7ca",
-            "eventSource": "aws:sqs",
-            "eventSourceARN": "arn:aws:sqs:ap-southeast-2:377188290550:BenchmarkPrepQueue",
-            "awsRegion": "ap-southeast-2"
+                "messageId":"85fc71a8-2817-4edb-b3a2-a89aea5e7806",
+                "receiptHandle":"AQEBoopy9QhT1saFsmDKUj5ztI1yhY0oLLbTeWBen0XQLzgPMOAWe6KSizxtBkRM+96CTZWDkuQw8sLVXD+Q8hdVWIsZlLnnBigCsPlsMLmn5VdT+vmtXwMrXesQx+y4xd2WFY5YDO+YvbuJdNJAmA3Bz1LbYehPjboldpKxJGEMDhnQl8d7Dp7tixP7Fm5d4Rj15GqnO4mQ41HPnLt/B8p50tIiIGZDwPf/xl20bUGD9ndxx5Hrl30JMRRMNOCLtmOl3Un/lxQld7crF6JMVPOQS/AgRd3tsQTzB6KyV9LorlgKtRSS+/QxsMyoHzUCe/Krp0JC967bhFIYOM9NjWwiiEFtneSyBOBwaBd3Rl3YkdCYsXRiSXJlBDlysm/9wCsc9wUjBfuVzybt2cKJVsnOko21TpsyEjiHYW74yW6r79mmOxBjw+Hk0slEbIktmeQ7oWZ0i2xJfldC0mNEJr9uDw==",
+                "body":json_object,
+                "attributes":{
+                    "ApproximateReceiveCount":"1",
+                    "SentTimestamp":"1665632813583",
+                    "SenderId":"AROAVPURMR73MJCJZ245Y:CracklingStackMackv1-schedulerEDBED1F9-LbH1NMJs8fRn",
+                    "ApproximateFirstReceiveTimestamp":"1665632813594"
+                },
+                "messageAttributes":{
+                    
+                },
+                "md5OfBody":"1876c35c59bf95da1cb597933ae3c3f8",
+                "eventSource":"aws:sqs",
+                "eventSourceARN":"arn:aws:sqs:ap-southeast-2:377188290550:CracklingStackMackv1-sqsDownloadCF37D907-OIS8F1z1h3mk",
+                "awsRegion":"ap-southeast-2"
             }
-        ]
+        ]   
     }
     class Contextsim:
         def __init__(self):

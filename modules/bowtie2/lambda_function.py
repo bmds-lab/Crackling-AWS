@@ -22,6 +22,8 @@ from datetime import datetime
 
 # try:
 s3_bucket = os.environ['BUCKET']
+ec2 = False
+tmp_DIr = ""
 # except:
 #     s3_bucket = 'macktest'
 
@@ -89,7 +91,7 @@ def lambda_handler(event, context):
     # error handling if files bigger than XGB (remember bt2 files need to be stored)
     
     # download from s3 based on accession
-    tmp_dir, chr_fns = s3_accession_to_tmp(s3_client,s3_bucket,accession)
+    tmp_dir, chr_fns = s3_accession_to_tmp(s3_client,s3_bucket,accession,ec2)
 
     # Create Bowtie2 files
     bowtie2(accession, tmp_dir, chr_fns)
@@ -106,9 +108,13 @@ def lambda_handler(event, context):
 
     print("All Done... Terminating Program.")
 
-def ec2_start(s3_Client, event, context):
+def ec2_start(s3_Client,tmp_dir, event, context):
     global s3_client
     s3_client = s3_Client
+    global ec2
+    ec2 = True
+    global tmp_DIr
+    tmp_DIr = tmp_dir
     return lambda_handler(event, context)
 
 if __name__== "__main__":

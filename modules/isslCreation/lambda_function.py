@@ -28,6 +28,8 @@ from datetime import datetime
 
 # try:
 s3_bucket = os.environ['BUCKET']
+ec2 = False
+tmp_Dir = ""
 # except:
 #     s3_bucket = 'macktest'
     
@@ -154,9 +156,13 @@ def lambda_handler(event, context):
     if os.path.exists(tmp_dir):
         shutil.rmtree(tmp_dir)
 
-def ec2_start(s3_Client, event, context):
+def ec2_start(s3_Client,tmp_dir, event, context):
     global s3_client
     s3_client = s3_Client
+    global ec2
+    ec2 = True
+    global tmp_Dir
+    tmp_Dir = tmp_dir
     return lambda_handler(event, context)
 
 if __name__== "__main__":
