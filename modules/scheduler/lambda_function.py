@@ -52,7 +52,10 @@ def handler(event, context):
             MaxCount=1,
             MinCount=1,
             InstanceInitiatedShutdownBehavior='terminate', 
-            UserData=init_script
+            UserData=init_script,
+            IamInstanceProfile={
+            'Arn': "arn:aws:iam::377188290550:instance-profile/ec2PipelineIAM"
+    }
         )
         instance_id = instance['Instances'][0]['InstanceId']
         print(instance_id)

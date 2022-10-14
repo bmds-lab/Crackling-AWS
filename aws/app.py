@@ -289,6 +289,12 @@ class CracklingStack(Stack):
             actions=["s3:*"],
             resources=["*"]
         ))
+
+        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+            actions=["iam:*"],
+            resources=["*"]
+        ))
+
         
         s3Genome.grant_read_write(lambdaScheduler)
 
