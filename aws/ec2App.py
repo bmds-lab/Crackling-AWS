@@ -33,6 +33,8 @@ class CracklingStack(Stack):
             ec2_.Peer.any_ipv4(),ec2_.Port.tcp(22)
         )
 
+        
+
         userData = ec2_.UserData.for_linux()
         userData.add_commands('apt-get update -y',
             'apt-get install -y git awscli ec2-instance-connect',

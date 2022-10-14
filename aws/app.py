@@ -62,12 +62,7 @@ class CracklingStack(Stack):
         #     receive_message_wait_time=Duration.seconds(20)
         # )
 
-        ### SQS queue for evaluating guide efficiency
-        # The TargetScan lambda function adds guides to this queue for processing
-        # The consensus lambda function processes items in this queue
-        sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
-            receive_message_wait_time=Duration.seconds(20)
-        )
+        
 
         ### DynamoDB (ddb) is a key-value store.
         # This table stores jobs for processing
@@ -222,11 +217,49 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
+
+        ### SQS queue for evaluating guide efficiency
+        # The TargetScan lambda function adds guides to this queue for processing
+        # The consensus lambda function processes items in this queue
+        sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration
+        )
         # sqsIssl = sqs_.Queue(self, "sqsIssl", 
         #     receive_message_wait_time=Duration.seconds(1),
         #     visibility_timeout=duration,
         #     retention_period=duration
         # )
+
+        # SchedulerRoler = iam_.Role(self, "My Role",
+        # assumed_by=iam_.ServicePrincipal("sns.amazonaws.com"))
+
+        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"))
+        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole"))
+        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_managed_policy_name("arn:aws:iam::377188290550:role/ec2PipelineIAM","ec2PipelineIAM" ))
+
+        # role1 = iam_.Role(self, "MyRole",
+        # assumed_by=iam_.CompositePrincipal(
+        #     iam_.ServicePrincipal("ec2.amazonaws.com"),
+        #     iam_.ServicePrincipal("s3.amazonaws.com")))
+
+        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
+        #     actions=["s3:*"],
+        #     resources=["*"]
+        # ))
+
+        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
+        #     actions=["ec2:*"],
+        #     resources=["*"]
+        # ))
+
+        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
+        #     actions=["lambda:*"],
+        #     resources=["*"]
+        # ))
+
+        # role2 = iam_.Role.from_role_arn(self, "Role", "arn:aws:iam::377188290550:role/ec2PipelineIAM",
+        # mutable=False)  
 
         # Lambda Scheduler
         lambdaScheduler = lambda_.Function(self, "scheduler", 
@@ -238,9 +271,27 @@ class CracklingStack(Stack):
             environment={
                 'QUEUE' : sqsDownload.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path
+                'PATH' : path,
+                "AMI": "ami-0a6ccdb2b9ddbd0db",
+                "INSTANCE_TYPE": "t2.micro",
+                "KEY_NAME" : "nick",
+                "QUEUE" : "sqsDownload",
+                "REGION" : "ap-southeast-2",
+                "SUBNET_ID" : "subnet-0f065628a1d2c6f9d"
             }
         )
+        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+            actions=["ec2:RunInstances"],
+            resources=["*"]
+        ))
+
+        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+            actions=["s3:*"],
+            resources=["*"]
+        ))
+        
+        s3Genome.grant_read_write(lambdaScheduler)
+
         ddbJobs.grant_stream_read(lambdaScheduler)
         sqsDownload.grant_send_messages(lambdaScheduler)
         lambdaScheduler.add_event_source_mapping(

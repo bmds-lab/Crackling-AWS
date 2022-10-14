@@ -27,16 +27,6 @@ QUEUE = os.environ['QUEUE']
 ec2 = boto3.client('ec2', region_name=REGION)
 
 def handler(event, context):
-    cutoffValues = []
-    
-    obj = s3.get_object(Bucket="downloadercutoff", Key="Downloader.csv") #get the csv from the bucket
-    data = obj['Body'].read().decode('utf-8').splitlines() # parse the data
-    records = csv.reader(data)
-    
-    for eachRecord in records: #
-        cutoffValues.append(eachRecord) #append each row of the cutoff csv into a list for later use
-        
-    print(cutoffValues)
         
     def SpawnLambda():
         genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
@@ -51,7 +41,7 @@ def handler(event, context):
         # message = event['message']
         init_script = f"""#!/bin/bash
         export BUCKET="macktest"
-        source /ec2Code/bin/activate
+        source /ec2Code/.venv/bin/activate
         python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobID}
         shutdown -h now
                     """
@@ -105,7 +95,7 @@ def handler(event, context):
         
         if metaDataFile > 0: 
             metaDataFile = metaDataFile / 1048576
-            if metaDataFile < int(cutoffValues[0][0]):
+            if metaDataFile < 3000:
                 #SpawnLambda()
                 print("LAMBDA")
             else:
@@ -113,7 +103,7 @@ def handler(event, context):
                 print("EC2")
         else:
             ChromosomeLength = ChromosomeLength / 1048576
-            if ChromosomeLength < float(cutoffValues[1][0]):
+            if ChromosomeLength < float("inf"):
                 #SpawnLambda()
                 print("LAMBDA")
             else:
