@@ -1,4 +1,6 @@
+from genericpath import isfile
 import os, re, shutil, tempfile, boto3, json
+from unicodedata import name
 
 from time import time, time_ns, sleep
 from datetime import datetime
@@ -131,7 +133,12 @@ def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
 
 def list_tmp(tmp_dir):
     print("Files in tmp directory: ",tmp_dir)
+    names = []
     tmpArr = os.listdir(tmp_dir)
+    for filename in tmpArr:
+        name = re.search(r'([^\/]+$)',filename).group(0)
+        name = f"{tmp_dir}/{name}"
+        names.append(name)
     return tmpArr, ','.join(names)
 
 def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
