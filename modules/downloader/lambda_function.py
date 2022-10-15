@@ -1,4 +1,4 @@
-import sys, re, os, shutil, zipfile, tempfile, boto3
+import sys, re, os, shutil, zipfile, boto3
 
 from threading import Thread
 from time import time, time_ns
@@ -40,7 +40,7 @@ def clean_s3_folder(accession):
 
 #download accession data and put it in correct directory
 def dl_accession(accession):
-    tmp_dir = tempfile.mkdtemp()
+    tmp_dir = get_tmp_dir(ec2)
     filesize_count = 0
     
     time_1 = time()
@@ -56,7 +56,8 @@ def dl_accession(accession):
         _preload_content = False )
 
     #Save Zip File
-    zip_file = tempfile.NamedTemporaryFile()
+    zip_file = get_named_tmp_file(ec2)
+    print(zip_file.name)
 
     # Download zip file
     try:

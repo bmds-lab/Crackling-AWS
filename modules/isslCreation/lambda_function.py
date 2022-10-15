@@ -1,4 +1,4 @@
-import sys, os, shutil, tempfile, boto3
+import sys, os, shutil, boto3
 
 from threading import Thread
 from botocore.exceptions import ClientError, ParamValidationError
@@ -27,7 +27,7 @@ def isslcreate(accession, chr_fns, tmp_fasta_dir):
     print("\nExtracting Offtargets...")
 
     # extract offtarget command
-    tmp_dir = tempfile.mkdtemp()
+    tmp_dir = get_tmp_dir(ec2)
     offtargetfn = os.path.join(tmp_dir,f"{accession}.offtargets")
     # Convert csv string to ssv
     files = chr_fns.split(',')

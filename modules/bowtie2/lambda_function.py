@@ -1,4 +1,4 @@
-import sys, os, shutil, tempfile, boto3
+import sys, os, shutil, boto3
 
 from threading import Thread
 from time import time, time_ns
@@ -16,7 +16,7 @@ s3_client = boto3.client('s3')
 
 #Build Bowtie2
 def bowtie2(accession, tmp_fasta_dir, chr_fns):
-    tmp_dir = tempfile.mkdtemp()
+    tmp_dir = get_tmp_dir(ec2)
     cpu_count = os.cpu_count()
     print('cpu_count: ', cpu_count)
 

@@ -47,6 +47,18 @@ def s3_success(s3_client,s3_bucket,accession,key,body):
         Key=os.path.join(accession,key)
     )
 
+def get_tmp_dir(ec2=False):
+    if ec2:
+        return tempfile.mkdtemp(dir="/data")
+    else:
+        return tempfile.mkdtemp()
+
+def get_named_tmp_file(ec2=False):
+    if ec2:
+        return tempfile.NamedTemporaryFile(dir="/data")
+    else:
+        return tempfile.NamedTemporaryFile()
+
 def create_csv_if_not_exist(s3_client, s3_bucket, filename):
     try:
         s3_client.head_object(Bucket=s3_bucket, Key=filename)

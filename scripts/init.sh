@@ -67,7 +67,7 @@ sudo chmod 777 -R ${dir}
 sudo wget -O ${dir}/2.zip https://github.com/bmds-lab/Crackling/archive/refs/heads/dev/fix-max-open-files-offtarget-extraction.zip 
 sudo unzip -o ${dir}/2.zip -d ${dir}
 cd ${dir}/Crackling-dev-fix-max-open-files-offtarget-extraction
-sudo g++ -o ../isslCreateIndex src/ISSL/isslCreateIndex.cpp  -fopenmp -std=c++11 -I src/ISSL/include
+sudo g++ -o ../isslCreateIndex src/ISSL/isslCreateIndex.cpp -fopenmp -std=c++11 -I src/ISSL/include
 cd ${dir}
 sudo rm -r ${dir}/src/
 sudo mv ${dir}/Crackling-dev-fix-max-open-files-offtarget-extraction/src ${dir}
