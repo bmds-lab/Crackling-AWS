@@ -226,41 +226,6 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
-        # sqsIssl = sqs_.Queue(self, "sqsIssl", 
-        #     receive_message_wait_time=Duration.seconds(1),
-        #     visibility_timeout=duration,
-        #     retention_period=duration
-        # )
-
-        # SchedulerRoler = iam_.Role(self, "My Role",
-        # assumed_by=iam_.ServicePrincipal("sns.amazonaws.com"))
-
-        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"))
-        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole"))
-        # SchedulerRoler.add_managed_policy(iam_.ManagedPolicy.from_managed_policy_name("arn:aws:iam::377188290550:role/ec2PipelineIAM","ec2PipelineIAM" ))
-
-        # role1 = iam_.Role(self, "MyRole",
-        # assumed_by=iam_.CompositePrincipal(
-        #     iam_.ServicePrincipal("ec2.amazonaws.com"),
-        #     iam_.ServicePrincipal("s3.amazonaws.com")))
-
-        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
-        #     actions=["s3:*"],
-        #     resources=["*"]
-        # ))
-
-        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
-        #     actions=["ec2:*"],
-        #     resources=["*"]
-        # ))
-
-        # SchedulerRoler.add_to_policy(iam_.PolicyStatement(
-        #     actions=["lambda:*"],
-        #     resources=["*"]
-        # ))
-
-        # role2 = iam_.Role.from_role_arn(self, "Role", "arn:aws:iam::377188290550:role/ec2PipelineIAM",
-        # mutable=False)  
 
         ec2role = iam_.Role(self, "ec2role",
             assumed_by=iam_.ServicePrincipal("ec2.amazonaws.com"),
@@ -275,17 +240,9 @@ class CracklingStack(Stack):
             resources=["*"]
         ))
 
-        # ec2role.role_arn
-
         cfn_instance_profile = iam_.CfnInstanceProfile(self, "MyCfnInstanceProfile",
             roles=[ec2role.role_name]
         )
-
-        # role2 = iam_.Role.from_role_arn(self, "Role", "arn:aws:iam::377188290550:role/ec2PipelineIAM",
-        # mutable=False)  
-
-        
-        
 
         # Lambda Scheduler
         lambdaScheduler = lambda_.Function(self, "scheduler", 
@@ -301,7 +258,7 @@ class CracklingStack(Stack):
                 'PATH' : path,
                 'BUCKET' : s3Genome.bucket_name,
                 "AMI": "ami-0a6ccdb2b9ddbd0db",
-                "INSTANCE_TYPE": "t2.2xlarge",
+                "INSTANCE_TYPE": "r5a.2xlarge",
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
                 "REGION" : "ap-southeast-2",
                 "EC2_CUTOFF" : str(3000),
@@ -311,19 +268,15 @@ class CracklingStack(Stack):
             actions=["ec2:RunInstances"],
             resources=["*"]
         ))
-
         lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
             actions=["s3:*"],
             resources=["*"]
         ))
-
         lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
             actions=["iam:*"],
             resources=["*"]
         ))
-        
         s3Genome.grant_read_write(lambdaScheduler)
-
         ddbJobs.grant_stream_read(lambdaScheduler)
         sqsDownload.grant_send_messages(lambdaScheduler)
         lambdaScheduler.add_event_source_mapping(
@@ -369,7 +322,7 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/bowtie2"),
-            layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs],
+            layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,

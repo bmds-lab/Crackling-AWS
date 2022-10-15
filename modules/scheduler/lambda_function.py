@@ -16,11 +16,13 @@ EC2_ARN = os.environ['EC2_ARN']
 EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
 def SpawnLambda(dictionary):
+    print("Spinning up lambdas for download, bowtie & isslCreation")
     json_object = json.dumps(dictionary)
     print(json_object)
     sendSQS(QUEUE,json_object)
 
 def SpawnEC2(genome,jobid,sequence):
+    print("Spinning up EC2 for download, bowtie & isslCreation")
     ec2 = boto3.client('ec2', region_name=REGION)
 
     init_script = f"""#!/bin/bash
@@ -92,17 +94,13 @@ def lambda_handler(event, context):
     # genome file size
     if metaDataFile > 0: 
         metaDataFile = metaDataFile / 1048576
-        if metaDataFile < EC2_CUTOFF:
-            print("LAMBDA")
-            SpawnLambda(dictionary)
-        else:
-            print("EC2")
+        if (metaDataFile == 0) or (metaDataFile > EC2_CUTOFF):
             SpawnEC2(genome,jobid,sequence)
+        else:
+            SpawnLambda(dictionary)
     else:
         ChromosomeLength = ChromosomeLength / 1048576
-        if ChromosomeLength < EC2_CUTOFF:
-            print("LAMBDA")
-            SpawnLambda(dictionary)
-        else:
-            print("EC2")
+        if (ChromosomeLength == 0) or (ChromosomeLength > EC2_CUTOFF):
             SpawnEC2(genome,jobid,sequence)
+        else:
+            SpawnLambda(dictionary)

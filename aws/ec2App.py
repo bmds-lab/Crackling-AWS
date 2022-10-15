@@ -71,8 +71,11 @@ class CracklingStack(Stack):
             ec2_.InitFile.from_file_inline("/ec2Code/modules/issl_creation.py", "../modules/isslCreation/lambda_function.py"),
             ec2_.InitFile.from_file_inline("/ec2Code/modules/lambda_downloader.py", "../modules/downloader/lambda_function.py"),
             ec2_.InitFile.from_file_inline("/ec2Code/ec2_ncbi.py", "../modules/ec2_ncbi/ec2_ncbi.py"),
-            ec2_.InitFile.from_file_inline("/home/ubuntu/init.sh", "../scripts/init.sh"),
-            ec2_.InitFile.from_file_inline("/ec2Code/src/ISSL/isslCreateIndex", "../layers/isslCreation/ISSL/isslCreateIndex",base64_encoded=True))
+            ec2_.InitFile.from_file_inline("/init.sh", "../scripts/init.sh"),
+            ec2_.InitFile.from_file_inline("/ec2Code/src/ISSL/isslCreateIndex", "../layers/isslCreation/ISSL/isslCreateIndex",base64_encoded=True),
+            ec2_.shellInitCommand.shell_command("bash /init.sh"),
+            ec2_.shellInitCommand.shell_command("rm /init.sh"))
+            
         )
 
 

@@ -1,6 +1,5 @@
 import sys, os, shutil, tempfile, boto3
 
-import subprocess as sp
 from threading import Thread
 from time import time, time_ns
 
@@ -30,12 +29,7 @@ def bowtie2(accession, tmp_fasta_dir, chr_fns):
             f'{tmp_dir}/{accession}']
         cmd = ' '.join(bt2Args)
         time_1 = time()
-        
-        pipe = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE )
-        
-        if pipe.returncode != (None):
-            print(pipe.returncode)
-            raise Exception("An Error occured when trying to run \"bowtie2-build\".")    
+        os.system(cmd)
         
         time_2 = time()
         print(f"Done. Time to build bowtie2: {(time_2-time_1)}.")
