@@ -21,8 +21,8 @@ class CracklingStack(Stack):
         super().__init__(scope, id, **kwargs)
 
         cracklingVpc = ec2_.Vpc.from_lookup(self, "CracklingVpc", vpc_id="vpc-9d849bfa")
-        self.instance_name = 'ECtest'
-        instance = ec2_.InstanceType.of(ec2_.InstanceClass.T2, ec2_.InstanceSize.NANO)
+        self.instance_name = 'EC2forAMI'
+        instance = ec2_.InstanceType.of(ec2_.InstanceClass.R5AD, ec2_.InstanceSize.XLARGE2)
 
         secuirtyGroup = ec2_.SecurityGroup(self, 'ec2-sec-grp',
             vpc=cracklingVpc,
@@ -32,8 +32,6 @@ class CracklingStack(Stack):
         secuirtyGroup.add_ingress_rule(
             ec2_.Peer.any_ipv4(),ec2_.Port.tcp(22)
         )
-
-        
 
         userData = ec2_.UserData.for_linux()
         userData.add_commands('apt-get update -y',
@@ -53,24 +51,8 @@ class CracklingStack(Stack):
             user_data=userData
             )
 
-        # init_data = ec2_.CloudFormationInit.from_elements(
-        #     ec2_.InitCommand('touch /home/ubuntu/logfile123.txt')
-        # )
-
-            # ec2_.InitFile.from_file_inline("/libs/libc.so.6", "../layers/lib/lib/libc.so.6"),
-            # ec2_.InitFile.from_file_inline("/libs/libdl.so.2", "../layers/lib/lib/libdl.so.2"),
-            # ec2_.InitFile.from_file_inline("/libs/libgcc_s.so.1", "../layers/lib/lib/libgcc_s.so.1"),
-            # ec2_.InitFile.from_file_inline("/libs/libgomp.so.1", "../layers/lib/lib/libgomp.so.1"),
-            # ec2_.InitFile.from_file_inline("/libs/libm.so.6", "../layers/lib/lib/libm.so.6"),
-            # ec2_.InitFile.from_file_inline("/libs/libpthread.so.0", "../layers/lib/lib/libpthread.so.0"),
-            # ec2_.InitFile.from_file_inline("/libs/libstdc++.so.6", "../layers/lib/lib/libstdc++.so.6"),
-            # ec2_.InitFile.from_file_inline("/libs/libtbb.so.2", "../layers/lib/lib/libtbb.so.2"),
-            # ec2_.InitFile.from_file_inline("/libs/libtbbmalloc_proxy.so.2", "../layers/lib/lib/libtbbmalloc_proxy.so.2"),
-            # ec2_.InitFile.from_file_inline("/libs/libtbbmalloc.so.2", "../layers/lib/lib/libtbbmalloc.so.2"),
-            # ec2_.InitFile.from_file_inline("/libs/libz.so.1", "../layers/lib/lib/libz.so.1"),
-
         ec2_inst = ec2_.Instance(
-            self, 'TestNaame',
+            self, 'EC2forAMI',
             instance_name=self.instance_name,
             instance_type=instance,
             vpc=cracklingVpc,
@@ -86,25 +68,10 @@ class CracklingStack(Stack):
             ec2_.InitFile.from_file_inline("/init.sh", "../scripts/init.sh"),
             ec2_.InitFile.from_file_inline("/ec2Code/src/ISSL/isslCreateIndex", "../layers/isslCreation/ISSL/isslCreateIndex",base64_encoded=True),
             ec2_.InitCommand.shell_command("bash /init.sh"),
-            ec2_.InitCommand.shell_command("rm /init.sh"))
-            
+            ec2_.InitCommand.shell_command("rm /init.sh"))            
         )
-
-
-        # userData.add_commands('apt-get update -y',
-        # 'mkdir -p /opt/aws/bin',
-        # 'wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz',
-        # 'python3 -m easy_install --script-dir /opt/aws/bin aws-cfn-bootstrap-py3-latest.tar.gz',
-        # )
-
-
-        #ec2_inst.user_data.add_commands()
-
-        print(ec2_inst)
-
-        # ec2_inst.user_data.add_commands(cloudInit)
 
 app = cdk.App()
 env_AU = cdk.Environment(account="377188290550", region="ap-southeast-2")
-CracklingStack(app,"CracklingStackEC2Nick", env= env_AU)
+CracklingStack(app,"CracklingStackEC2", env= env_AU)
 app.synth()    

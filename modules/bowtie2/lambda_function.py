@@ -30,7 +30,6 @@ def bowtie2(accession, tmp_fasta_dir, chr_fns):
         cmd = ' '.join(bt2Args)
         time_1 = time()
         os.system(cmd)
-        
         time_2 = time()
         print(f"Done. Time to build bowtie2: {(time_2-time_1)}.")
         upload_dir_to_s3(s3_client,s3_bucket,tmp_dir,f'{accession}/bowtie2')
@@ -51,7 +50,7 @@ def lambda_handler(event, context):
     # get file size of accession from s3 before download 
     filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
     # Check files exist
-    if(filesize < 1):
+    if(filesize < 1) and not ec2:
         sys.exit("Error: accession file/s are missing.")
 
     csv_fn = 'bt2_times.csv'

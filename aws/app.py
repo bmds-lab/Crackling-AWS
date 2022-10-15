@@ -257,11 +257,11 @@ class CracklingStack(Stack):
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'BUCKET' : s3Genome.bucket_name,
-                "AMI": "ami-0a6ccdb2b9ddbd0db",
+                "AMI": "ami-08664e4d83c26fca6",
                 "INSTANCE_TYPE": "r5ad.2xlarge",
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
                 "REGION" : "ap-southeast-2",
-                "EC2_CUTOFF" : str(3000),
+                "EC2_CUTOFF" : str(650),
             }
         )
         lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
@@ -352,8 +352,6 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
-                # 'TARGETS_TABLE' : ddbTargets.table_name,
-                # 'JOBS_TABLE' : ddbJobs.table_name,
                 'BUCKET' : s3Genome.bucket_name,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
@@ -368,7 +366,6 @@ class CracklingStack(Stack):
         )
 
         # s3-triggered lambda to SQS to targetScan
-        # https://aws.plainenglish.io/trigger-lambda-on-s3-events-using-cdk-763e2a292113
         lambdaS3Check = lambda_.Function(self, "s3Check", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
@@ -416,7 +413,6 @@ class CracklingStack(Stack):
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
         sqsConsensus.grant_send_messages(lambdaTargetScan)
-        # s3Genome.grant_read_write(lambdaTargetScan)
         sqsIssl.grant_send_messages(lambdaTargetScan)
         lambdaTargetScan.add_event_source_mapping(
             "mapSqsTargetScan",

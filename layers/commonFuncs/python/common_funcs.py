@@ -48,16 +48,10 @@ def s3_success(s3_client,s3_bucket,accession,key,body):
     )
 
 def get_tmp_dir(ec2=False):
-    if ec2:
-        return tempfile.mkdtemp(dir="/data")
-    else:
-        return tempfile.mkdtemp()
+    return tempfile.mkdtemp()
 
 def get_named_tmp_file(ec2=False):
-    if ec2:
-        return tempfile.NamedTemporaryFile(dir="/data")
-    else:
-        return tempfile.NamedTemporaryFile()
+    return tempfile.NamedTemporaryFile()
 
 def create_csv_if_not_exist(s3_client, s3_bucket, filename):
     try:
@@ -111,6 +105,8 @@ def s3_fasta_dir_size(s3_client,s3_bucket,path):
         PaginationConfig={"PageSize": 1000})
     for page in response:
         files = page.get("Contents")
+        if files is None:
+            return 0
         for file in files:
             if ".fa" in file['Key']:
                 filesize += file['Size']

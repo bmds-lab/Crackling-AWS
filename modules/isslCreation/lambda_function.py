@@ -29,6 +29,7 @@ def isslcreate(accession, chr_fns, tmp_fasta_dir):
     # extract offtarget command
     tmp_dir = get_tmp_dir(ec2)
     offtargetfn = os.path.join(tmp_dir,f"{accession}.offtargets")
+    print(f"Creating: {offtargetfn}")
     # Convert csv string to ssv
     files = chr_fns.split(',')
 
@@ -43,7 +44,7 @@ def isslcreate(accession, chr_fns, tmp_fasta_dir):
         # ec2 code
         import multiprocessing
         mpPool = multiprocessing.Pool(os.cpu_count())
-        extractOfftargets.startMultiprocessing(files,offtargetfn,mpPool,1,400)
+        extractOfftargets.startMultiprocessing(files,offtargetfn,mpPool,os.cpu_count(),400)
         isslBin = "/ec2Code/isslCreateIndex"
     time_2 = time()
 
@@ -71,7 +72,7 @@ def lambda_handler(event, context):
     # get file size of accession from s3 before download 
     filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
     # Check files exist
-    if(filesize < 1):
+    if(filesize < 1) and not ec2:
         sys.exit("Accession file/s are missing.")
 
     csv_fn = 'issl_times.csv'

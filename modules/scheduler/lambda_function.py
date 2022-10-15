@@ -27,8 +27,11 @@ def SpawnEC2(genome,jobid,sequence):
 
     init_script = f"""#!/bin/bash
     sudo mkfs -t xfs /dev/nvme1n1
-    sudo mkdir /data
-    sudo mount /dev/nvme1n1 /data
+    sudo mount /dev/nvme1n1 /tmp2
+    sudo cp -R /tmp/* /tmp2
+    sudo umount /tmp2
+    sudo mount /dev/nvme1n1 /tmp
+    sudo chmod 777 /tmp
     export BUCKET="{BUCKET}"
     source /ec2Code/.venv/bin/activate
     python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobid} || shutdown -h -t 30
@@ -48,7 +51,9 @@ def SpawnEC2(genome,jobid,sequence):
         }   
     )
     instance_id = instance['Instances'][0]['InstanceId']
-    print(instance_id)
+    response = ec2.monitor_instances(InstanceIds=[instance_id])
+    print(f"instance_id: {instance_id}")
+    print(f"EC2 Monitoring response: {response}")
 
 def get_fna_size_accessions(genome):
     api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
