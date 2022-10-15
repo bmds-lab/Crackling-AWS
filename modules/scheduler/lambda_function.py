@@ -1,118 +1,108 @@
-from webbrowser import Chrome
-import ncbi.datasets
-# import json
-import os
-import boto3
-import csv
+import ncbi.datasets, os, json, boto3
 
-# try:
-#     from common_funcs import *
-# except:
-#     sys.path.insert(0, '/config/common_funcs/python')
-#     from common_funcs import *
+from common_funcs import *
 
-s3 = boto3.client('s3')
+try:
+    import ncbi.datasets
+except ImportError:
+    print('ncbi.datasets module not found. To install, run `pip install ncbi-datasets-pylib`.')
 
 AMI = os.environ['AMI']
+BUCKET = os.environ['BUCKET']
 INSTANCE_TYPE = os.environ['INSTANCE_TYPE']
-KEY_NAME = os.environ['KEY_NAME']
-SUBNET_ID = os.environ['SUBNET_ID']
 REGION = os.environ['REGION']
 QUEUE = os.environ['QUEUE']
+EC2_ARN = os.environ['EC2_ARN']
+EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
-# eventJSON = '{"accessions": ["GCF_001433935.1","GCF_002211085.1","GCA_003073215.1","GCF_901001135.1","GCA_900231445.1"]}'
+def SpawnLambda(dictionary):
+    json_object = json.dumps(dictionary)
+    print(json_object)
+    sendSQS(QUEUE,json_object)
 
-# event = json.loads(eventJSON)
+def SpawnEC2(genome,jobid,sequence):
+    ec2 = boto3.client('ec2', region_name=REGION)
 
-ec2 = boto3.client('ec2', region_name=REGION)
+    init_script = f"""#!/bin/bash
+    export BUCKET="{BUCKET}"
+    source /ec2Code/.venv/bin/activate
+    python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobid} || shutdown -h -t 30
+    shutdown -h -t 30
+                """
+    
+    # create ec2 for when accession will take too long to download
+    instance = ec2.run_instances( 
+        ImageId=AMI,
+        InstanceType=INSTANCE_TYPE,
+        MaxCount=1,
+        MinCount=1,
+        InstanceInitiatedShutdownBehavior='terminate', 
+        UserData=init_script,
+        IamInstanceProfile={
+            'Arn': EC2_ARN  
+        }   
+    )
+    instance_id = instance['Instances'][0]['InstanceId']
+    print(instance_id)
 
-def handler(event, context):
-        
-    def SpawnLambda():
-        genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
-        print(genome)
-        sendSQS(QUEUE,genome) #send to sqs to trigger lambda section of pipeline
+def get_fna_size_accessions(genome):
+    api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
+    
+    assembly_accessions = genome.split() ## needs to be a full accession.version
 
-    def SpawnEC2():
-        genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
-        jobID = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
-        sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
+    genome_summary = api_instance.assembly_descriptors_by_accessions(assembly_accessions, page_size=1)
 
-        # message = event['message']
-        init_script = f"""#!/bin/bash
-        export BUCKET="macktest"
-        source /ec2Code/.venv/bin/activate
-        python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobID}
-        shutdown -h now
-                    """
-        instance = ec2.run_instances( # create ec2 for when accession will take too long to download
-            ImageId=AMI,
-            InstanceType=INSTANCE_TYPE,
-            KeyName=KEY_NAME,
-            MaxCount=1,
-            MinCount=1,
-            InstanceInitiatedShutdownBehavior='terminate', 
-            UserData=init_script,
-            IamInstanceProfile={
-            'Arn': "arn:aws:iam::377188290550:instance-profile/ec2PipelineIAM"
+    print(f"Number of assemblies: {genome_summary.total_count}")
+
+    metaDataFile = 0 # this measurement is most accurate
+    try:
+        for a in genome_summary.assemblies[0].assembly.annotation_metadata.file:
+            metaDataFile = metaDataFile + int(a.estimated_size)
+    except:
+        print("MetaData Length is missing data")
+    
+    ChromosomeLength = 0 # This measurement is needed if metaData is not present
+    try:
+        for a in genome_summary.assemblies[0].assembly.chromosomes:
+            ChromosomeLength = ChromosomeLength + int(a.length)
+    except:
+        print("Chromosome Length is missing data")
+    
+    print(f" The sum of the files is {metaDataFile}")
+    print(f" The sum of the chromosome length is {ChromosomeLength}")
+
+    return metaDataFile, ChromosomeLength
+
+
+def lambda_handler(event, context):
+    genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
+    jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
+    sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
+    print("EC2_CUTOFF",EC2_CUTOFF)
+    dictionary ={ 
+        "Genome": genome, 
+        "Sequence": sequence, 
+        "JobID": jobid
     }
-        )
-        instance_id = instance['Instances'][0]['InstanceId']
-        print(instance_id)
 
-    def get_fna_size_accessions():
-        api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
-        
-        genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
-        
-        print(genome)
-        
-        assembly_accessions = genome.split() ## needs to be a full accession.version
+    # get genome file size
+    metaDataFile, ChromosomeLength = get_fna_size_accessions(genome)
 
-        genome_summary = api_instance.assembly_descriptors_by_accessions(assembly_accessions, page_size=1)
-
-        type(genome_summary)
-
-        print(f"Number of assemblies: {genome_summary.total_count}")
-
-        # print(genome_summary)
-        metaDataFile = 0 # this measurement is most accurate
-        try:
-            for a in genome_summary.assemblies[0].assembly.annotation_metadata.file:
-                metaDataFile = metaDataFile + int(a.estimated_size)
-        except:
-            print("MetaData Length is missing data")
-
-        
-        ChromosomeLength = 0 # This measurement is needed if metaData is not present
-        try:
-            for a in genome_summary.assemblies[0].assembly.chromosomes:
-                ChromosomeLength = ChromosomeLength + int(a.length)
-        except:
-            print("Chromosome Length is missing data")
-        
-        print(f" The sum of the files is {metaDataFile}")
-        print(f" The sum of the chromosome length is {ChromosomeLength}")
-
-        # add code to spawn either ec2 or lambda function
-        
-        if metaDataFile > 0: 
-            metaDataFile = metaDataFile / 1048576
-            if metaDataFile < 3000:
-                #SpawnLambda()
-                print("LAMBDA")
-            else:
-                #SpawnEC2
-                print("EC2")
+    # add code to spawn either ec2 or lambda function based on 
+    # genome file size
+    if metaDataFile > 0: 
+        metaDataFile = metaDataFile / 1048576
+        if metaDataFile < EC2_CUTOFF:
+            print("LAMBDA")
+            SpawnLambda(dictionary)
         else:
-            ChromosomeLength = ChromosomeLength / 1048576
-            if ChromosomeLength < float("inf"):
-                #SpawnLambda()
-                print("LAMBDA")
-            else:
-                print("EC2")
-                #SpawnEC2()
-        SpawnEC2()
-
-
-    get_fna_size_accessions()
+            print("EC2")
+            SpawnEC2(genome,jobid,sequence)
+    else:
+        ChromosomeLength = ChromosomeLength / 1048576
+        if ChromosomeLength < EC2_CUTOFF:
+            print("LAMBDA")
+            SpawnLambda(dictionary)
+        else:
+            print("EC2")
+            SpawnEC2(genome,jobid,sequence)
