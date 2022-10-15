@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "aptget install required files"
 
-sudo apt-get install bowtie2 unzip python3-pip python3.8-venv -y
+sudo apt-get install bowtie2 libtbb-dev unzip python3-pip python3.8-venv -y
 
 cd ${dir}
 

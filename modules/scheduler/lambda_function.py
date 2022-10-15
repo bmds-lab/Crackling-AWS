@@ -26,6 +26,9 @@ def SpawnEC2(genome,jobid,sequence):
     ec2 = boto3.client('ec2', region_name=REGION)
 
     init_script = f"""#!/bin/bash
+    sudo mkfs -t xfs /dev/nvme1n1
+    sudo mkdir /data
+    sudo mount /dev/nvme1n1 /data
     export BUCKET="{BUCKET}"
     source /ec2Code/.venv/bin/activate
     python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobid} || shutdown -h -t 30

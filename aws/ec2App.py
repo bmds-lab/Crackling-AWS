@@ -22,7 +22,7 @@ class CracklingStack(Stack):
 
         cracklingVpc = ec2_.Vpc.from_lookup(self, "CracklingVpc", vpc_id="vpc-9d849bfa")
         self.instance_name = 'ECtest'
-        instance = ec2_.InstanceType.of(ec2_.InstanceClass.T2, ec2_.InstanceSize.MICRO)
+        instance = ec2_.InstanceType.of(ec2_.InstanceClass.T2, ec2_.InstanceSize.NANO)
 
         secuirtyGroup = ec2_.SecurityGroup(self, 'ec2-sec-grp',
             vpc=cracklingVpc,
@@ -57,6 +57,18 @@ class CracklingStack(Stack):
         #     ec2_.InitCommand('touch /home/ubuntu/logfile123.txt')
         # )
 
+            # ec2_.InitFile.from_file_inline("/libs/libc.so.6", "../layers/lib/lib/libc.so.6"),
+            # ec2_.InitFile.from_file_inline("/libs/libdl.so.2", "../layers/lib/lib/libdl.so.2"),
+            # ec2_.InitFile.from_file_inline("/libs/libgcc_s.so.1", "../layers/lib/lib/libgcc_s.so.1"),
+            # ec2_.InitFile.from_file_inline("/libs/libgomp.so.1", "../layers/lib/lib/libgomp.so.1"),
+            # ec2_.InitFile.from_file_inline("/libs/libm.so.6", "../layers/lib/lib/libm.so.6"),
+            # ec2_.InitFile.from_file_inline("/libs/libpthread.so.0", "../layers/lib/lib/libpthread.so.0"),
+            # ec2_.InitFile.from_file_inline("/libs/libstdc++.so.6", "../layers/lib/lib/libstdc++.so.6"),
+            # ec2_.InitFile.from_file_inline("/libs/libtbb.so.2", "../layers/lib/lib/libtbb.so.2"),
+            # ec2_.InitFile.from_file_inline("/libs/libtbbmalloc_proxy.so.2", "../layers/lib/lib/libtbbmalloc_proxy.so.2"),
+            # ec2_.InitFile.from_file_inline("/libs/libtbbmalloc.so.2", "../layers/lib/lib/libtbbmalloc.so.2"),
+            # ec2_.InitFile.from_file_inline("/libs/libz.so.1", "../layers/lib/lib/libz.so.1"),
+
         ec2_inst = ec2_.Instance(
             self, 'TestNaame',
             instance_name=self.instance_name,
@@ -73,8 +85,8 @@ class CracklingStack(Stack):
             ec2_.InitFile.from_file_inline("/ec2Code/ec2_ncbi.py", "../modules/ec2_ncbi/ec2_ncbi.py"),
             ec2_.InitFile.from_file_inline("/init.sh", "../scripts/init.sh"),
             ec2_.InitFile.from_file_inline("/ec2Code/src/ISSL/isslCreateIndex", "../layers/isslCreation/ISSL/isslCreateIndex",base64_encoded=True),
-            ec2_.shellInitCommand.shell_command("bash /init.sh"),
-            ec2_.shellInitCommand.shell_command("rm /init.sh"))
+            ec2_.InitCommand.shell_command("bash /init.sh"),
+            ec2_.InitCommand.shell_command("rm /init.sh"))
             
         )
 
