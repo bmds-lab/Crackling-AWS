@@ -27,6 +27,7 @@ def SpawnEC2(genome,jobid,sequence):
 
     init_script = f"""#!/bin/bash
     sudo mkfs -t xfs /dev/nvme1n1
+    sudo mkdir /tmp2
     sudo mount /dev/nvme1n1 /tmp2
     sudo cp -R /tmp/* /tmp2
     sudo umount /tmp2
