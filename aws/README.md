@@ -88,9 +88,35 @@ Once the image is created successfully, delete the ec2 and paste in the ID of th
 
 The CrackligStack is the main stack and is responsible for deploying the frontend, api endpoints, s3 buckets and all the various lambda functions that are used.
 
-The crackline is now split into small lambda subsections that push info to either s3 buckets or to dynamo db tables that will trigger another lambda function.
+The crackling pipeline is now split into small lambda subsections that push info to either s3 buckets, dynamo db tables or to sqs queues that allow other lambda functions to be trggered to propigate through the pipeline.
 
 The crackling frontend is saved and deployed into an s3 bucket
+
+Dynamo DB tables are used to push events from lambda to lambda.
+
+Since the lambda functions need to use external libraries and files, these files are uploaded as lambda layers and can be added to each lambda as needed.  Ensure that the lambda layers are uploaded in a suitable architecture as needed.
+
+....MACKENZIE, PLS EXPLAIN SQS AND POTENTIALLY SOME UNIQUE INFO ABOUT THE LAMBDAS
+
+# Lambda Scheduler
+
+Since the scheduler is to dynamically decide between triggering a lambda or spawn an ec2 instance, IAM roles have to be created to allow the lambda function to spawn ec2 instances and s3 bucket rights.  This is achieved by creating a new iam_role and adding policies that give wild card permissions to both ec2 and s3.  This newly created role is then added to a "cfnInstanceProfile" and added as an environment variable for the user lambda to use when spawning an ec2.  
+
+The "AMI" environment variable is the id of the AMI created previously in the ec2Stack.
+
+The "INSTANCE_TYPE" is the type of EC2 instance that will be spun up.  At the moment the default is an r5ad.2xlarge, this is due to it being the cheapest option for high memory.  It may potentially be beneficial to switch to compute optimsied to reduce the computation time at the expense of more expensive memory.  
+
+The "EC2_CUTOFF" is a variable that represents the total estimated length of the file download (MB) that is needed for the lambda to schedule an ec2 instance instead of a lambda function.  Feel free to adjust this variable if you feel this cutoff is too conservative.
+
+"The Queue" variable is just a reference to the sqs queue that is needed when writing the sqs to trigger the subsequent lambda function.
+
+To enable the lambda to give these iam roles, the lambda itself needs these permissions as well.  You can achieve by using the "add_to_principal_policy" to your lambda.Function variable.  You need to give "ec2:RunInstances", "s3:*" and "iam:*" rights to the lambda function.
+
+Lastly, you need to grant the lambda function access to s3Genome, ddbJobs and sqs download.
+
+
+
+
 
 
 
