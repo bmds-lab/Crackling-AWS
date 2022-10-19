@@ -17,14 +17,6 @@ sudo apt-get install bowtie2 libtbb-dev unzip python3-pip python3.8-venv -y
 cd ${dir}
 
 echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
-echo "setting up venv"
 
 ve() {
     local py=${1:-python3}
@@ -60,7 +52,6 @@ ve() {
 }
 
 ve
-
 
 sudo chmod 777 -R ${dir}
 

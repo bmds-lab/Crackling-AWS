@@ -1,5 +1,5 @@
 {
-  "app": "python3 ec2App.py",
+  "app": "python3 app.py",
   "watch": {
     "include": [
       "**"

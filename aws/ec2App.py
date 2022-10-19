@@ -22,7 +22,7 @@ class CracklingStack(Stack):
 
         cracklingVpc = ec2_.Vpc.from_lookup(self, "CracklingVpc", vpc_id="vpc-9d849bfa")
         self.instance_name = 'EC2forAMI'
-        instance = ec2_.InstanceType.of(ec2_.InstanceClass.R5AD, ec2_.InstanceSize.XLARGE2)
+        instance = ec2_.InstanceType.of(ec2_.InstanceClass.T2, ec2_.InstanceSize.NANO)
 
         secuirtyGroup = ec2_.SecurityGroup(self, 'ec2-sec-grp',
             vpc=cracklingVpc,
