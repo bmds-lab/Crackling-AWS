@@ -102,6 +102,8 @@ cdk destroy # for destroying the stack in CloudFormation
 
 ## Deployment
 
+Additional deployment information in aws/README.md and layers/README.md.
+
 ### Shared objects (for binaries)
 
 Collect all shared objects needed by compiled binaries.

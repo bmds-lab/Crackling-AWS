@@ -53,16 +53,8 @@ class CracklingStack(Stack):
             retain_on_delete=False
         )
         cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
-
-        ### Simple Queue Service (SQS) is a queuing service for serverless applications.
-        # This queue is for off-target scoring.
-        # The TargetScan lambda function adds guides to this queue for processing
-        # # The Issl lambda function processes items in this queue
-        # sqsIssl = sqs_.Queue(self, "sqsIssl", 
-        #     receive_message_wait_time=Duration.seconds(20)
-        # )
-
-        
+        # New S3 Bucket for Genome File storage
+        s3Genome = s3_.Bucket(self,"genomeStorage")     
 
         ### DynamoDB (ddb) is a key-value store.
         # This table stores jobs for processing
@@ -89,13 +81,6 @@ class CracklingStack(Stack):
         # This layer provides the ISSL scoring binary.
         lambdaLayerIssl = lambda_.LayerVersion(self, "isslBinary",
             code=lambda_.Code.from_asset("../layers/isslScoreOfftargets"),
-            removal_policy=RemovalPolicy.DESTROY,
-            compatible_architectures=[lambda_.Architecture.X86_64]
-        )
-
-        ### Lambda layer containing ISSL indexes
-        lambdaLayerIsslIdxs = lambda_.LayerVersion(self, "isslIndexes",
-            code=lambda_.Code.from_asset("../layers/isslIndexes"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
@@ -134,7 +119,7 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        ### Mackenzie Added layers
+        ### Layers required for downloader and assoc. layers, explained in ../layers/README.md
         # This layer provides the bowtie2 "binaries"/script files
         lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
             code=lambda_.Code.from_asset("../layers/bt2Bin"),
@@ -179,13 +164,8 @@ class CracklingStack(Stack):
             }
         )
         ddbJobs.grant_read_write_data(lambdaCreateJob)
-
-        ### Slot in new lambdas here
-
-        # New S3 Bucket
-        s3Genome = s3_.Bucket(self,"genomeStorage")
-
-        #
+        
+        #Variables used over many lambdas
         ld_library_path = ("/opt/libs:/lib64:/usr/lib64:$LAMBDA_RUNTIME_DIR:"
         "$LAMBDA_RUNTIME_DIR/lib:$LAMBDA_TASK_ROOT:$LAMBDA_TASK_ROOT/lib:/opt/lib")
         path = "/usr/local/bin:/usr/bin/:/bin:/opt/bin"
@@ -217,7 +197,6 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
-
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
         # The consensus lambda function processes items in this queue
@@ -227,6 +206,8 @@ class CracklingStack(Stack):
             retention_period=duration
         )
 
+        # IAM role and surrounding instance profile for scheduler to create EC2 
+        # instance if genome is above "EC2_CUTOFF" threshold
         ec2role = iam_.Role(self, "ec2role",
             assumed_by=iam_.ServicePrincipal("ec2.amazonaws.com"),
             description="Example role..."
@@ -239,7 +220,6 @@ class CracklingStack(Stack):
             actions=["s3:*"],
             resources=["*"]
         ))
-
         cfn_instance_profile = iam_.CfnInstanceProfile(self, "MyCfnInstanceProfile",
             roles=[ec2role.role_name]
         )

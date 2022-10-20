@@ -12,13 +12,6 @@ shutil.copy("/opt/isslScoreOfftargets", "/tmp/isslScoreOfftargets")
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
-OFFTARGETS_INDEX_MAP = {
-    #'Test100000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test100000_E_coli_offTargets_20.fa.sorted.issl",
-    #'Test200000_E_coli_offTargets_20.fa.sorted.issl' : r"/opt/Test200000_E_coli_offTargets_20.fa.sorted.issl"
-    
-    'SARS-COV-2_NC_045512-2.issl' : r"/opt/SARS-COV-2_NC_045512-2.issl"
-}
-
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
@@ -46,13 +39,13 @@ def CalcIssl(targets, genome):
     # download from s3 based on accession
     s3_client = boto3.client('s3')
     s3_bucket = os.environ['BUCKET']
-    tmp_dir, issl_file = s3_files_to_tmp(s3_client,s3_bucket,genome,".issl")
+    _, issl_file = s3_files_to_tmp(s3_client,s3_bucket,genome,".issl")
 
     # call the scoring method
     caller(
         ["{} \"{}\" \"{}\" \"{}\" \"{}\" > \"{}\"".format(
             BIN_ISSL_SCORER,
-            issl_file, #OFFTARGETS_INDEX_MAP[genome],
+            issl_file,
             tmpToScore.name,
             '4',
             '75',

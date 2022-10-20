@@ -14,6 +14,7 @@ timeout = 10800
 s3_lock_attempts = 15
 lock_delay = 0.15
 
+# try to get mutex write lock, error after specified no. of attempts
 def s3_try_lock(s3_client,s3_bucket,key):
     count = 0
     while count<s3_lock_attempts:
@@ -29,15 +30,18 @@ def s3_try_lock(s3_client,s3_bucket,key):
         sleep(lock_delay)
     raise RuntimeError("s3 csv file locked") 
 
+# delete s3 file
 def s3_delete(s3_client,bucket,key):
     s3_client.delete_object(
         Bucket=bucket,
         Key=key
     )
 
+# unlock s3 csv writing
 def s3_unlock(s3_client,s3_bucket,key):
     s3_delete(s3_client,s3_bucket,key)
 
+# Create .notif files for s3check module to use
 def s3_success(s3_client,s3_bucket,accession,key,body):
     key = f'{key}.notif'
     print(f"s3 success. Creating {key}.")
@@ -64,6 +68,7 @@ def create_csv_if_not_exist(s3_client, s3_bucket, filename):
         s3_client.upload_file(file.name, s3_bucket, filename)
         file.close()
 
+# Add info about run to csv file for logging
 def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
     string = f'\n{datetime.now()},{accession},{filesize},{Time}'
     file = tempfile.NamedTemporaryFile()
@@ -82,15 +87,15 @@ def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
         #download file from s3    
         file_content = s3_client.get_object(
             Bucket=s3_bucket, Key=csv_fn)["Body"].read()
-        #write files to memory
+        #write filecontent binary data to fileobj then close
         f = open(file.name, 'wb')
         f.write(file_content)
         f.close()
-        
+        # reopen file in text appending mode and write new data
         f = open(file.name, 'a')
         f.write(string)
         f.close()
-        
+        # overwrite old file with new appended file.
         s3_client.upload_file(file.name, s3_bucket, csv_fn)
         s3_unlock(s3_client,s3_bucket,lock_key)
         time_2 = time()
@@ -98,6 +103,7 @@ def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
         print(f'Time to append s3file: {(time_2-time_1)} sec.')
     file.close()
 
+# return genome size from s3 file storage
 def s3_fasta_dir_size(s3_client,s3_bucket,path):
     filesize = 0
     paginator = s3_client.get_paginator("list_objects_v2")
@@ -112,6 +118,7 @@ def s3_fasta_dir_size(s3_client,s3_bucket,path):
                 filesize += file['Size']
     return filesize
 
+# download fasta files from S3 bucket to tmp directory and return csv string of fasta tmp filepaths
 def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
     tmpArr = tempfile.mkdtemp()
     names = []
@@ -139,6 +146,7 @@ def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
     print("Files from s3 bucket: ",tmpArr)
     return tmpArr, ','.join(names)
 
+# return csv string of fasta tmp filepaths (used on EC2s)
 def list_tmp(tmp_dir):
     print("Files in tmp directory: ",tmp_dir)
     names = []
@@ -149,6 +157,7 @@ def list_tmp(tmp_dir):
         names.append(name)
     return tmpArr, ','.join(names)
 
+# Upload directory of files to S3 bucket
 def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     #upload files individually to s3
     files = os.listdir(path)
@@ -162,6 +171,7 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     # close temp directory
     shutil.rmtree(path)
 
+# Thread task to write to csv if about to run out of execution time
 def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key):
     testtime = time_ns()
     delay = context.get_remaining_time_in_millis()*.995-(s3_lock_attempts*lock_delay*1000)
@@ -171,6 +181,7 @@ def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock
     string = f'Your out of touch I\'m out of time(exec time > {testtime - starttime})'
     s3_csv_append(s3_client, s3_bucket, accession, filesize, string, csv_fn, lock_key)
 
+# Send SQS message
 def sendSQS(sqsURL,msg):
     sqs = boto3.client('sqs')
     sqs.send_message(
@@ -178,6 +189,7 @@ def sendSQS(sqsURL,msg):
         MessageBody=msg
     )
 
+# Convert event to python dictionary
 def recv(event):
     for record in event['Records']:
         try:

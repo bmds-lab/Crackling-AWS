@@ -62,7 +62,7 @@ Enjoy!
 
 There are two seperate stacks that are used to create the Crackling pipeline.  
 
-# EC2STACK
+## EC2STACK
 
 The first stack located in "ec2App.py" is a stack that is created purely for the creation of an ec2 instance with everything needed pre-installed.  The CracklingStackEC2Nick runs on the default vpc.  The EC2 allows inbound ssh from any ip address.
 
@@ -76,43 +76,46 @@ The isslcreateIndex must be sent over as well, ensure that this is base65 encode
 
 There is a bash script called "init.sh", this file should be located in the root directory of the instance.  This init.sh is ran by a shell command that calls it through using bash.  Please ensure that the EOL characters in the init.sh file are unix based and not dos based (can also used dos2unix during the init shell commands).  DOS based EOL characters will cause the cdk stack to not be initialised.
 
-The ec2 instance can be generated on a t2.Micro, since spawning the ec2 is only used to generate an AMI.
+The ec2 instance can be generated on a t2.Nano, since spawning the ec2 is only used to generate an AMI and does not need a lot of resources, and minimizes cost, especially if the EC2 is forgotten about and not deleted *AFTER* AMI creation (steps below).
 
-Once everything has been ran and the ec2 is verified to have been deployed and running with 2/2 status checks you will have to manually create an AMI of the newly created ec2 instance.
+### EC2Stack Deployment/Usage Steps
 
-By default make the ec2 AMI 8gb EBS (this EBS will be extended when calling it from the scheduler).
+To successfully deploy the EC2Stack and create the AMI, complete the following steps (assuming above setup steps for cdk install/setup have been completed):
 
-Once the image is created successfully, delete the ec2 and paste in the ID of the AMI into the "lambdaScheduler.environment.AMI section present in app.py".  Sadly this process couldnt be made automatic since a new ec2/AMI doesnt need to be created everytime the app.py stack is redeployed.
+1. cd to `Crackling-AWS/aws` directory
+2. modify `cdk.json` line 2 to read `"app": "python3 ec2App.py"` (instead of `"app": "python3 app.py"`)
+3. run `cdk deploy` to create stack and EC2
+4. goto EC2 management console and find EC2 instance named "EC2forAMI"
+5. wait for ec2 instance to be fully deployed/verified to have been deployed and running with 2/2 status checks
+6. Create AMI via right-click menu (more detailed steps found [here](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/tkv-create-ami-from-instance.html))
+7. Wait roughly 20 minutes for AMI to be created
+8. Copy AMI ID
+9. Terminate EC2 *AFTER* AMI creation has finished
+10. Replace lambdaScheduler's old "AMI" environment variable value with new AMI ID, found in `Crackling-AWS/aws/app.py`
+11. Run `cdk destroy` to delete stack as no longer needed
+12. Revert Step 2 (change line back to "app.py").
 
-# CracklingStack
+By default make the ec2 AMI 8gb EBS which is fine as CracklingStack will make use of EC2 instances with additional attached storage (R5ad) for temporary data.
 
-The CrackligStack is the main stack and is responsible for deploying the frontend, api endpoints, s3 buckets and all the various lambda functions that are used.
+Repeat the above steps if the any of the following modules are modified, to have the ec2 instance reflect modifications:
+- bowtie2
+- downloader
+- ec2_ncbi
+- isslCreation
 
-The crackling pipeline is now split into small lambda subsections that push info to either s3 buckets, dynamo db tables or to sqs queues that allow other lambda functions to be trggered to propigate through the pipeline.
+## CracklingStack
 
-The crackling frontend is saved and deployed into an s3 bucket
+The CracklingStack is the main stack and is responsible for deploying the frontend, api endpoints, s3 buckets and all the various lambda functions that are used.
 
-Dynamo DB tables are used to push events from lambda to lambda.
+The Crackling-AWS architecture is segmented into lambda functions to calculate results against a genome. These lambda functions will interact with other AWS services such as s3 buckets, dynamo db tables or to sqs queues that allow other lambda functions to be triggered progress through the cloud formation.
 
-Since the lambda functions need to use external libraries and files, these files are uploaded as lambda layers and can be added to each lambda as needed.  Ensure that the lambda layers are uploaded in a suitable architecture as needed.
+Simple Queue Service is used in the formation to trigger the next lambda/s after the first one has finished, sending necessary information from one AWService to the next. Dynamo DB tables and streams are used in a similar way as SQS, to push events from lambda to the next, as well as store data from runs in a database form.
 
-....MACKENZIE, PLS EXPLAIN SQS AND POTENTIALLY SOME UNIQUE INFO ABOUT THE LAMBDAS
+The crackling frontend is saved and deployed into an s3 or Simple Storage Service bucket, as well as another s3 bucket for storage of the genome files downloaded and generated by the stack.
 
-# Lambda Scheduler
+Since the lambda functions need to use external libraries, python packages and files etc which aren't installed to the typical lambda instance, these files are uploaded as *lambda layers* which can then be attached to each lambda as needed at runtime. 
 
-Since the scheduler is to dynamically decide between triggering a lambda or spawn an ec2 instance, IAM roles have to be created to allow the lambda function to spawn ec2 instances and s3 bucket rights.  This is achieved by creating a new iam_role and adding policies that give wild card permissions to both ec2 and s3.  This newly created role is then added to a "cfnInstanceProfile" and added as an environment variable for the user lambda to use when spawning an ec2.  
-
-The "AMI" environment variable is the id of the AMI created previously in the ec2Stack.
-
-The "INSTANCE_TYPE" is the type of EC2 instance that will be spun up.  At the moment the default is an r5ad.2xlarge, this is due to it being the cheapest option for high memory.  It may potentially be beneficial to switch to compute optimsied to reduce the computation time at the expense of more expensive memory.  
-
-The "EC2_CUTOFF" is a variable that represents the total estimated length of the file download (MB) that is needed for the lambda to schedule an ec2 instance instead of a lambda function.  Feel free to adjust this variable if you feel this cutoff is too conservative.
-
-"The Queue" variable is just a reference to the sqs queue that is needed when writing the sqs to trigger the subsequent lambda function.
-
-To enable the lambda to give these iam roles, the lambda itself needs these permissions as well.  You can achieve by using the "add_to_principal_policy" to your lambda.Function variable.  You need to give "ec2:RunInstances", "s3:*" and "iam:*" rights to the lambda function.
-
-Lastly, you need to grant the lambda function access to s3Genome, ddbJobs and sqs download.
+For more information on either the lambda function code or lambda layers, go to the `../modules` or `../layers` directories for additional readme files.
 
 
 

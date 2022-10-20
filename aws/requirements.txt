@@ -1,5 +1,1 @@
 aws-cdk-lib==2.44.0
-# constructs<4.0.0,>=3.3.69
-# aws-cdk-core==1.175.0
-# constructs>=10.0.0,<11.0.0
-# jsii==1.66.0
