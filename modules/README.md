@@ -34,7 +34,7 @@ This module requires the "Bt2Lib", "Bt2Bin", "CommonFuncs" and "Lib" layers to f
 
 It is worth noting that "LD_LIBRARY_PATH" used intentionally puts the Bt2Lib folder "libs" before any other library directory as it contains a more recent version of the "libstdc++.so.6" than the "lib" layer has which is required for other modules, so it is used instead of the default version. If this package is not included, the module will fail to run the bowtie2 tool.
 
-When running on an ec2, the temperorary directory where all the fasta files are stored will be used instead of downloading the file from the s3 bucket. SQS sending is also disabled for this module when in EC2 mode.
+When running on an ec2, the temporary directory where all the fasta files are stored will be used instead of downloading the file from the s3 bucket. SQS sending is also disabled for this module when in EC2 mode.
 
 ## isslCreation
 the isslCreation module uses parts of the [Crackling standalone codebase](https://github.com/bmds-lab/Crackling) to create both a "extractofftargets" and a ISSL index file required for the issl/offtarget-scoring module. Firstly, the "extractOfftargets.py" utility from Crackling standalone, which has been modified to run on a lambda function, is used to create an offtargets file. This offtargets file is needed for the input of the "isslCreateIndex" binary that was compiled from the "isslCreateIndex.cpp" source file in Crackling standalone, which creates the ".issl" index file.
@@ -43,7 +43,7 @@ Once the above code has been run successfully, the resulting files are uploaded 
 
 This module requires the "CommonFuncs", "IsslCreation" and "Lib" layers to function as expected.
 
-When running on an ec2, the temperorary directory where all the fasta files are stored will be used instead of downloading the file from the s3 bucket. Additionally, if running on an EC2, the unmodified, faster version of the the "extractOfftargets.py" utility is used. SQS sending is also disabled for this module when in EC2 mode.
+When running on an ec2, the temporary directory where all the fasta files are stored will be used instead of downloading the file from the s3 bucket. Additionally, if running on an EC2, the unmodified, faster version of the the "extractOfftargets.py" utility is used. SQS sending is also disabled for this module when in EC2 mode.
 
 
 ## s3Check
