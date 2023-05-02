@@ -41,7 +41,8 @@ class CracklingStack(Stack):
             "CracklingWebsite",
             website_index_document="index.html",
             public_read_access=True,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            block_public_access = s3_.BlockPublicAccess.BLOCK_ACLS
         )
         s3FrontendDeploy = s3d_.BucketDeployment(
             self, "DeployFrontend",
