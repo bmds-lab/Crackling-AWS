@@ -6,7 +6,7 @@ dir=/ec2Code
 
 cd /
 
-sudo mkkdir ${dir}
+# sudo mkkdir ${dir}
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -55,12 +55,12 @@ ve
 
 sudo chmod 777 -R ${dir}
 
-sudo wget -O ${dir}/2.zip https://github.com/bmds-lab/Crackling/archive/refs/heads/dev/fix-max-open-files-offtarget-extraction.zip 
+sudo wget -O ${dir}/2.zip https://github.com/bmds-lab/Crackling/archive/refs/heads/master.zip
 sudo unzip -o ${dir}/2.zip -d ${dir}
-cd ${dir}/Crackling-dev-fix-max-open-files-offtarget-extraction
+cd ${dir}/Crackling-master
 sudo g++ -o ../isslCreateIndex src/ISSL/isslCreateIndex.cpp -fopenmp -std=c++11 -I src/ISSL/include
 cd ${dir}
 sudo rm -r ${dir}/src/
-sudo mv ${dir}/Crackling-dev-fix-max-open-files-offtarget-extraction/src ${dir}
+sudo mv ${dir}/Crackling-master/src ${dir}
 sudo rm ${dir}/2.zip
-sudo rm -r ${dir}/Crackling-dev-fix-max-open-files-offtarget-extraction
+sudo rm -r ${dir}/Crackling-master
