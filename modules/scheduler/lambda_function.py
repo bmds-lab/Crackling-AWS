@@ -15,6 +15,9 @@ QUEUE = os.environ['QUEUE']
 EC2_ARN = os.environ['EC2_ARN']
 EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
+s3_log_bucket = os.environ['LOG_BUCKET']
+s3_client = boto3.client('s3')
+
 def SpawnLambda(dictionary):
     print("Spinning up lambdas for download, bowtie & isslCreation")
     json_object = json.dumps(dictionary)
@@ -107,9 +110,13 @@ def lambda_handler(event, context):
             SpawnEC2(genome,jobid,sequence)
         else:
             SpawnLambda(dictionary)
+             #Store lambda id for logging purposes
+            create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
     else:
         ChromosomeLength = ChromosomeLength / 1048576
         if (ChromosomeLength == 0) or (ChromosomeLength > EC2_CUTOFF):
             SpawnEC2(genome,jobid,sequence)
         else:
             SpawnLambda(dictionary)
+             #Store lambda id for logging purposes
+            create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')

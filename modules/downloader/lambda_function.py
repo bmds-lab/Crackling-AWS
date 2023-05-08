@@ -13,6 +13,7 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
+s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 starttime = time_ns()
 
@@ -136,6 +137,8 @@ def sum_filesize(accession):
 def lambda_handler(event, context):
     args,body = recv(event)
     accession = args['Genome']
+    sequence = args['Sequence']
+    jobid = args['JobID']
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
@@ -170,7 +173,8 @@ def lambda_handler(event, context):
     if ec2:
         print("All Done... Terminating Program.")
         return tmp_dir
-
+    
+    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     BT2_QUEUE = os.getenv('BT2_QUEUE')

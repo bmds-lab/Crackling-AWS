@@ -15,6 +15,7 @@ except:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
+s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 tmp_Dir = ""
 starttime = time_ns()
@@ -65,6 +66,8 @@ def isslcreate(accession, chr_fns, tmp_fasta_dir):
 def lambda_handler(event, context):
     args,body = recv(event)
     accession = args['Genome']
+    sequence = args['Sequence']
+    jobid = args['JobID']
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
@@ -97,6 +100,8 @@ def lambda_handler(event, context):
 
     # Add run to s3 csv for logging
     s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
+    
+    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'IsslCreation')
 
     #close temp fasta file directory
     if not ec2 and os.path.exists(tmp_dir):

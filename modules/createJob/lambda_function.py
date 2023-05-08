@@ -1,7 +1,16 @@
-import boto3, json, uuid, os, time, datetime
+import boto3, json, uuid, os, time
+
+
+from time import time,time_ns, sleep
+from datetime import datetime
+from common_funcs import *
+
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
+
+s3_log_bucket = os.environ['LOG_BUCKET']
+s3_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(JOBS_TABLE)
@@ -23,7 +32,6 @@ def return_http_json(code, message, tags = []):
         payload['keys'] = tags
     body = json.dumps(payload)
     return {'statusCode': code, 'headers': headers, 'body': body}
-
 
 def lambda_handler(event, context):
     if event['body']:
@@ -57,8 +65,8 @@ def lambda_handler(event, context):
         Item={
             'JobID' : jobid,
             'Sequence' : sequence,
-            'DateTime' : int(time.time()),
-            'DateTimeHuman' : str(datetime.datetime.now()),
+            'DateTime' : int(time()),
+            'DateTimeHuman' : str(datetime.now()),
             'Genome' : genome
         }
     )
@@ -69,6 +77,9 @@ def lambda_handler(event, context):
         'Genome' : genome # for debug
     })
 
+    #Store lambda id for logging purposes
+    create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, 'CreateJob')
+    
     return {
         "statusCode": 200,
         "headers": headers,

@@ -8,10 +8,14 @@ from common_funcs import *
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
+s3_log_bucket = os.environ['LOG_BUCKET']
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
+
+# Create S3 client
+s3_client = boto3.client('s3')
 
 # Function that returns the reverse-complement of a given sequence
 complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
@@ -83,7 +87,8 @@ def find_targets(params):
             for targetQueue in [ISSL_SQS, CONSENSUS_SQS]:
                 msg = json.dumps(
                     {
-                        'default': json.dumps(targetEntry)
+                        'default': json.dumps(targetEntry),
+                        'genome': json.dumps(params['Genome'])
                     }
                 )
             
@@ -133,6 +138,13 @@ def lambda_handler(event, context):
 
 
     params,body = recv(event)
+    
+    accession = params['Genome']
+    sequence = params['Sequence']
+    jobid = params['JobID']
+    
+    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'TargetScan')
+    
     find_targets(params)
         #print('Processed INSERT event for {}.'.format(jobid))
         
