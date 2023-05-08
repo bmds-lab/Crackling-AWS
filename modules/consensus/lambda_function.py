@@ -6,6 +6,7 @@ import glob
 import joblib
 import re
 import ast
+import time
 
 from sklearn.svm import SVC
 from subprocess import call
@@ -21,6 +22,9 @@ low_energy_threshold = -30
 high_energy_threshold = -18
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
+consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
+
+sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 
@@ -41,11 +45,11 @@ def CalcConsensus(records):
     rnaFoldResults = _CalcRnaFold(records.keys())
     
     for record in records:
-        records[record]['Consensus'] = [
+        records[record]['Consensus'] = ','.join([str(int(x)) for x in [
             _CalcChopchop(record),
             _CalcMm10db(record, rnaFoldResults[record]['result']),
             _CalcSgrnascorer(record)
-        ]
+        ]])
         
     return records
 
@@ -186,22 +190,19 @@ def _CalcSgrnascorer(seq):
 
 def lambda_handler(event, context):
     records = {}
-    
-    for message in event:
-    
-        #message = None
-        #print(record)
-        #try:
-        #    if 'dynamodb' in record:
-        #        if 'NewImage' in record['dynamodb']:
-        #            message = record['dynamodb']['NewImage']
-        #except Exception as e:
-        #    print(f"Exception: {e}")
-        #    continue
-        #
-        
+    ReceiptHandles = []
+    print(event)
+    for record in event['Records']:
+        print(record)
+        try:
+            message = json.loads(record['body'])
+            message = json.loads(message['default'])
+        except e:
+            print(f"Exception: {e}")
+            continue
+
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):
-            print(f'Missing core data to perform consensus: {message}')
+            print(f'Missing core data to perform off-target scoring: {message}')
             continue
 
         print(message)
@@ -218,23 +219,39 @@ def lambda_handler(event, context):
         message = messageNew
         
         records[message['Sequence']] = {
-            'JobID'     : message['JobID'],
-            'TargetID'  : message['TargetID'],
-            'Consensus' : [],
+            'JobID'         : message['JobID'],
+            'TargetID'      : message['TargetID'],
+            'Consensus'     : "",
         }
+        ReceiptHandles.append(record['receiptHandle'])
        
-    print(f"Processing {len(records)} guides.")
+    #print(f"Processing {len(records)} guides.")
     
     results = CalcConsensus(records)
     
     for key in results:
         result = results[key]
-        print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}")
+        #print(json.dumps(result['Consensus']))
         response = TARGETS_TABLE.update_item(
             Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
             UpdateExpression='set Consensus = :c',
-            ExpressionAttributeValues={':c': json.dumps(result['Consensus'])}
+            ExpressionAttributeValues={':c': result['Consensus']}
         )
-        
+        #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+    
+    # remove messages from the SQS queue. Max 10 at a time.
+    for i in range(0, len(ReceiptHandles), 10):
+        toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
+        response = sqs_client.delete_message_batch(
+            QueueUrl=consensus_queue_url,
+            Entries=[
+                {
+                    'Id': f"{time.time_ns()}",
+                    'ReceiptHandle': delete
+                }
+                for delete in toDelete
+            ]
+        )
+    
     return (event)
     

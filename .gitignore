@@ -1,4 +1,13 @@
 _*/*
 cloudformation/CracklingCloudFormation.yaml.packaged
 layers/consensusPy38Pkgs/*
-layers/isslIndexes
+*.venv
+*.zip
+cdk.out
+aws/aws/dist/
+aws/aws/install
+aws/aws/README.md
+aws/aws/THIRD_PARTY_LICENSES
+layers/ncbi/*
+=10.0.0,
+tests/*
