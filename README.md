@@ -40,13 +40,32 @@ Please refer to our paper when using Crackling:
 
 ![Crackling-AWS.drawio](Crackling-AWS.drawio.png)
 
-## Installing AWS-CDK in Linux or WSL
+## Crackling-AWS Deployment Guide
+
+### 1. Installing and Configurung the AWS CLI in Linux/WSL
+```bash
+# Check for updates
+$ sudo apt-get update
+
+# install aws cli
+$ sudo apt-get awscli
+
+# configure aws credentials (config and cred files can be found in . ~/aws (hidden files) in linux/windows)
+# Use the following settings:
+# 	ACCESS KEY: <yourAWSAccessKey>
+# 	SECRET KEY: <yourAWSSecretKey>
+# 	REGION: ap-southeast-2
+# 	TYPE: json
+$ aws configure
+```
+
+### 2. Installing AWS-CDK in Linux or WSL
 
 Using VSCode as your Integrated Development Environment is recommended.
 
 AWS provides documentation that you should read:
 
-- [Configuration and credential file settings](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) (for the AWS CLI)
+- [Configuration and credential file settings](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) (for the AWS CLI - we set the up in the above step)
 
 - [Getting started](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html) (with the CDK)
 
@@ -65,14 +84,14 @@ AWS provides documentation that you should read:
     VS Marketplace Link: https://marketplace.visualstudio.com/items?itemName=AmazonWebServices.aws-toolkit-vscode
    ```
 
-Follow these instructions to setup the environment. In vscode, You will need to configure a connection to the CDK running in WSL (if applicable).
+Follow these instructions to setup the environment.
 
 ```bash
 # Install Node Version Manager (nvm)
 $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 
-# Using nvm, install the latest version of node
-$ nvm install node
+# Using nvm, install node v18 (aws cdk is not supported on newer versions)
+$ nvm install v18.0
 
 # Install the AWS CDK
 $ npm install -g aws-cdk
@@ -83,80 +102,93 @@ $ cdk --version
 
 # Make sure python3.8 venv is installed
 $ sudo apt-get install python3-venv
-
-# Initialise a new AWS project
-$ cdk init app --language python
-
-# Enable the virtual environment
-source .venv/bin/activate
-
-# Install the requirements, as defined by the AWS CDK
-$ pip install -r requirements.txt
-
-# Useful CDK commands include:
-cdk synth # for creating the CloudFormation template without deploying
-cdk deploy # for deploying the stack via CloudFormation
-cdk destroy # for destroying the stack in CloudFormation
-# add the `--profile` flag to indicate which set of AWS credentials you wish to use, e.g.  `--profile bmds`.
 ```
 
-## Deployment
-
-Additional deployment information in aws/README.md and layers/README.md.
-
-### Shared objects (for binaries)
+### 3. Shared objects (for binaries)
 
 Collect all shared objects needed by compiled binaries.
 
 See here: https://www.commandlinefu.com/commands/view/10238/copy-all-shared-libraries-for-a-binary-to-directory
 
+Working in the root directory of the repo, run:
 ```
 ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
 
 ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
 ```
 
-### Python modules 
+### 4. Python Modules 
 
+The `pip install -r' command is used frequently throught the following section. In some enviroments, this command errors out. If this occours, please view the requirments.txt file (referenced in the command) and use pip to install each library manually.
 
-The consensus module has Python dependencies that need to be installed.
+**Concensus Layer**
 
-They need to be installed and packaged locally before deploying to AWS:
+The consensus module has Python dependencies that need to be installed. They need to be installed and packaged locally before deploying to AWS.
 
+Working in the root directory of the repo, run:
 ```
-cd modules/consensus
+python3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
 
-tar.exe -czf deployment.package.zip package/*
 ```
 
 Read more in the AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-dependencies
 
-On Windows (with Windows Python Launcher installed):
-
-```
-cd modules/consensus
-
-py -3 -m venv .venv
-
-.venv\Scripts\activate.bat
-
-pip install --target ./package joblib sklearn
-
-pip freeze > requirements.txt
-
-pip install -r requirements.txt
-```
-
 If you make changes to the dependencies, make sure the `requirements.txt` file is updated:
 
-```
+```bash
 cd modules/consensus
 
 pip freeze > requirements.txt
 ```
 
-### Deploying using the CDK
+**NCBI Layer:**
 
+Working in the root directory of the repo, run:
+```bash
+mkdir layers/ncbi/python
+python3 -m pip install --target layers/ncbi/python -r layers/ncbi_reqs.txt
+```
+
+**Concensus Module (different to concensus layer)**
+
+Working in the `<root>/modules/consensus` directory:
+```bash
+   python3 -m venv .venv
+
+   #activate venv
+   source .venv/bin/activate
+
+   pip install wheel #(required for scikit-learn)
+
+   pip install --target ./package joblib, scikit-learn
+   
+   pip install -r requirements.txt
+   
+   #deactivate venv
+   deactivate
+
+```
+**AWS App Modules**
+
+Working in the `<root>/aws` directory:
+```bash
+   python3 -m venv .venv
+
+   source .venv/bin/activate
+
+   pip install -r requirements.txt
+
+   deactivate
+```
+
+### 5. Further Reading
+Please now proceed to read the following documentation for futher install instructions (/understanding) for the application:
+ - `<root>/layers/README.md`
+ - `<root>/modules/README.md`
+ - `<root>/aws/README.md`
+
+### 6. Deploying using the CDK
+Working from the `<root>/aws` directory:
 ```bash
 # Useful CDK commands include:
 cdk synth # for creating the CloudFormation template without deploying
