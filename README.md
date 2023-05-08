@@ -149,25 +149,6 @@ mkdir layers/ncbi/python
 python3 -m pip install --target layers/ncbi/python -r layers/ncbi_reqs.txt
 ```
 
-**Concensus Module (different to concensus layer)**
-
-Working in the `<root>/modules/consensus` directory:
-```bash
-   python3 -m venv .venv
-
-   #activate venv
-   source .venv/bin/activate
-
-   pip install wheel #(required for scikit-learn)
-
-   pip install --target ./package joblib, scikit-learn
-   
-   pip install -r requirements.txt
-   
-   #deactivate venv
-   deactivate
-
-```
 **AWS App Modules**
 
 Working in the `<root>/aws` directory:

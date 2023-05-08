@@ -238,7 +238,7 @@ class CracklingStack(Stack):
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'BUCKET' : s3Genome.bucket_name,
-                "AMI": "ami-0f47efcaf05b209ac",
+                "AMI": "ami-0a3394674772b58a3",
                 "INSTANCE_TYPE": "r5ad.2xlarge",
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
                 "REGION" : "ap-southeast-2",
