@@ -13,24 +13,25 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-access_point_arn = os.environ['ACCESS_POINT_ARN']
+genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
 s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 starttime = time_ns()
 
 # Create S3 client
-s3_client = boto3.client('s3', endpoint_url=access_point_arn)
+s3_log_client = boto3.client('s3')
+s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
 
 def clean_s3_folder(accession):
     try:
-        paginator = s3_client.get_paginator("list_objects_v2")
+        paginator = s3_log_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
             PaginationConfig={"PageSize": 1000})
         for page in response:
             files = page.get("Contents")
             for filename in files:
                 print(filename)
-                s3_client.delete_object(
+                s3_log_client.delete_object(
                     Bucket=s3_bucket,
                     Key=filename
                 )
@@ -96,7 +97,7 @@ def dl_accession(accession):
                     tmp_name = f'{tmp_dir}/{name}.fa'
                     chr_fns.append(tmp_name)
                     #upload to s3
-                    s3_client.upload_fileobj(to_extract, s3_bucket, s3_name)
+                    s3_log_client.upload_fileobj(to_extract, s3_bucket, s3_name)
                     to_extract.close()
                     #write file to tmp dir
                     if (__name__== "__main__") or ec2:
@@ -151,7 +152,7 @@ def lambda_handler(event, context):
     lock_key = 'lock_key'
 
     # Create new threads
-    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
+    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_log_client,s3_bucket,csv_fn,lock_key))
     thread1.daemon = True
     thread1.start()
 
@@ -163,7 +164,7 @@ def lambda_handler(event, context):
         time = tmp_dir
     
     # Add run to s3 csv for logging
-    s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
+    s3_csv_append(s3_log_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
     #close temp fasta file directory
     if not ec2 and os.path.exists(tmp_dir):
@@ -175,7 +176,7 @@ def lambda_handler(event, context):
         print("All Done... Terminating Program.")
         return tmp_dir
     
-    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'Downloader')
+    create_log(s3_log_client, s3_log_bucket, context, accession, sequence, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     BT2_QUEUE = os.getenv('BT2_QUEUE')
@@ -186,8 +187,8 @@ def lambda_handler(event, context):
 
 # ec2 instance code entry and setup function
 def ec2_start(s3_Client, event, context):
-    global s3_client
-    s3_client = s3_Client
+    global s3_log_client
+    s3_log_client = s3_Client
     global ec2
     ec2 = True
     return lambda_handler(event, context)

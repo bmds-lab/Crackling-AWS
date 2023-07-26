@@ -10,8 +10,7 @@ MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-access_point_arn = os.environ['ACCESS_POINT_ARN']
-s3_client = boto3.client('s3', endpoint_url=access_point_arn)
+s3_log_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(JOBS_TABLE)
@@ -79,7 +78,7 @@ def lambda_handler(event, context):
     })
 
     #Store lambda id for logging purposes
-    create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, 'CreateJob')
+    create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, 'CreateJob')
     
     return {
         "statusCode": 200,

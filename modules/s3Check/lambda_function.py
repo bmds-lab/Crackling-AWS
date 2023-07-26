@@ -6,22 +6,21 @@ from botocore.exceptions import ClientError
 from common_funcs import *
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-access_point_arn = os.environ['ACCESS_POINT_ARN']
 
-s3_client = boto3.client('s3', endpoint_url=access_point_arn)
+s3_log_client = boto3.client('s3')
 
 QUEUE = os.environ['QUEUE']
 
 def filetest(s3_bucket,key):
     try:
-        file_content = s3_client.get_object(Bucket=s3_bucket, Key=key)["Body"].read()
+        file_content = s3_log_client.get_object(Bucket=s3_bucket, Key=key)["Body"].read()
         return file_content
     except ClientError:
         return ""
 
 def create_multiple_logs(content, context, name):
     json_string = json.loads(content)
-    create_log(s3_client, s3_log_bucket, context, json_string['Genome'] , json_string['Sequence'], json_string['JobID'], name)
+    create_log(s3_log_client, s3_log_bucket, context, json_string['Genome'] , json_string['Sequence'], json_string['JobID'], name)
 
 def lambda_handler(event, context):
     # get bucket
@@ -50,14 +49,14 @@ def lambda_handler(event, context):
         # if both lambdas have finished, Send and SQS message
         if(len(file_content)>0):
             print("Both Lambdas have finished.")
-            s3_client.put_object(
+            s3_log_client.put_object(
                 Body=file_content,
                 Bucket=bucket,
                 Key=os.path.join(accession,'success')
             )
             # clean-up files
-            s3_delete(s3_client,bucket,issltest)
-            s3_delete(s3_client,bucket,bt2test)
+            s3_delete(s3_log_client,bucket,issltest)
+            s3_delete(s3_log_client,bucket,bt2test)
 
             msg = file_content.decode("utf-8")
             print(f"Sending message to SQS: {msg}")

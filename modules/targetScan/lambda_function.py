@@ -9,14 +9,13 @@ TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 s3_log_bucket = os.environ['LOG_BUCKET']
-access_point_arn = os.environ['ACCESS_POINT_ARN']
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
 
 # Create S3 client
-s3_client = boto3.client('s3', endpoint_url=access_point_arn)
+s3_log_client = boto3.client('s3')
 
 # Function that returns the reverse-complement of a given sequence
 complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
@@ -144,9 +143,9 @@ def lambda_handler(event, context):
     sequence = params['Sequence']
     jobid = params['JobID']
     
-    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'TargetScan')
+    create_log(s3_log_client, s3_log_bucket, context, accession, sequence, jobid, 'TargetScan')
     
-    find_targets(params)
+    find_targets(params) 
         #print('Processed INSERT event for {}.'.format(jobid))
         
     # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']

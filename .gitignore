@@ -13,3 +13,4 @@ aws/aws/THIRD_PARTY_LICENSES
 layers/ncbi/*
 =10.0.0,
 tests/*
+aws/node_modules
