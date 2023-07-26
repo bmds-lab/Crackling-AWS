@@ -27,7 +27,7 @@ from aws_cdk import (
     aws_s3_notifications as s3_notify,
 )
 
-version = "Dev"
+version = "-Dev-1"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
