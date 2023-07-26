@@ -28,7 +28,8 @@ if __name__== "__main__":
     args = cliArguments()
 
     # Create s3_client
-    s3_client = boto3.client('s3')
+    access_point_arn = os.environ['ACCESS_POINT_ARN']
+    s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
     # Create event and context 
     event, context = main(args['accession'],args['sequence'],args['jobid'])

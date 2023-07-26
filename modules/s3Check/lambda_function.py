@@ -6,8 +6,9 @@ from botocore.exceptions import ClientError
 from common_funcs import *
 
 s3_log_bucket = os.environ['LOG_BUCKET']
+access_point_arn = os.environ['ACCESS_POINT_ARN']
 
-s3_client = boto3.client('s3')
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 QUEUE = os.environ['QUEUE']
 

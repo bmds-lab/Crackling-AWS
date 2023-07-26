@@ -27,7 +27,8 @@ consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
 sqs_client = boto3.client('sqs')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
+access_point_arn = os.environ['ACCESS_POINT_ARN']
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)

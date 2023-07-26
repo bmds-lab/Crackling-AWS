@@ -9,6 +9,7 @@ except ImportError:
 
 AMI = os.environ['AMI']
 BUCKET = os.environ['BUCKET']
+access_point_arn = os.environ['ACCESS_POINT_ARN']
 INSTANCE_TYPE = os.environ['INSTANCE_TYPE']
 REGION = os.environ['REGION']
 QUEUE = os.environ['QUEUE']
@@ -16,7 +17,7 @@ EC2_ARN = os.environ['EC2_ARN']
 EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 def SpawnLambda(dictionary):
     print("Spinning up lambdas for download, bowtie & isslCreation")

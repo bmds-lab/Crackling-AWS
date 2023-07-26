@@ -10,7 +10,8 @@ MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
+access_point_arn = os.environ['ACCESS_POINT_ARN']
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(JOBS_TABLE)

@@ -13,12 +13,13 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
+access_point_arn = os.environ['ACCESS_POINT_ARN']
 s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 starttime = time_ns()
 
 # Create S3 client
-s3_client = boto3.client('s3')
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 def clean_s3_folder(accession):
     try:

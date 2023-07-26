@@ -16,12 +16,13 @@ targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
 s3_log_bucket = os.environ['LOG_BUCKET']
+access_point_arn = os.environ['ACCESS_POINT_ARN']
 
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
 
-s3_client = boto3.client('s3')
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
 
@@ -39,8 +40,10 @@ def CalcIssl(targets, genome):
         fp.write("\n")
 
     # download from s3 based on accession
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client('s3', endpoint_url=access_point_arn)
     s3_bucket = os.environ['BUCKET']
+    access_point_arn = os.environ['ACCESS_POINT_ARN']
+    
     _, issl_file = s3_files_to_tmp(s3_client,s3_bucket,genome,".issl")
 
     # call the scoring method

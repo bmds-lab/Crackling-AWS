@@ -9,13 +9,14 @@ TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 s3_log_bucket = os.environ['LOG_BUCKET']
+access_point_arn = os.environ['ACCESS_POINT_ARN']
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
 
 # Create S3 client
-s3_client = boto3.client('s3')
+s3_client = boto3.client('s3', endpoint_url=access_point_arn)
 
 # Function that returns the reverse-complement of a given sequence
 complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
