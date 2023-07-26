@@ -27,15 +27,28 @@ from aws_cdk import (
     aws_s3_notifications as s3_notify,
 )
 
-version = "DevTagger"
+version = "Dev"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
+        
+
         ### Virtual Private Cloud
         # VPCs are used for constraining infrastructure to a private network.
-        cracklingVpc = ec2_.Vpc(self, f"CracklingVpc{version}") #,nat_gateways=0
+        cracklingVpc = ec2_.Vpc(
+            scope=self,
+            id="CracklingVpc{version}",
+            vpc_name="CracklingVpc{version}",
+
+            #add s3 gateway
+            gateway_endpoints={
+                "s3" : ec2_.GatewayVpcEndpointOptions(
+                    service=ec2_.GatewayVpcEndpointAwsService.S3
+                )
+            }#,nat_gateways=0
+        )
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
@@ -58,12 +71,24 @@ class CracklingStack(Stack):
             retain_on_delete=False
         )
         cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
+        
         # New S3 Bucket for Genome File storage
         s3Genome = s3_.Bucket(self,
             "genomeStorage", 
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects = True
-        )   
+        )
+
+        # VPC access point for Genome storage
+        s3Genome_access = s3_.CfnAccessPoint(
+            scope=self,
+            id="s3Genome_access",
+            name="s3Genome_access",
+            vpc_configuration=s3_.CfnAccessPoint.VpcConfigurationProperty(
+                vpc_id=cracklingVpc.vpc_id
+            )
+        )
+
         #New S3 Bucket for Log storage
         s3Log = s3_.Bucket(self, "logStorage")    
 
