@@ -136,10 +136,12 @@ def lambda_handler(event, context):
                 
                 print(jobId, genome)
 
+                #METRIC  CODE
+                
                 #log name based on request_id, a unique identifier
                 output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
                 #store lambda id for future logging
-                create_log(s3_client, s3_log_bucket, context, genome, result['Item']['Sequence']['S'], jobId, output)
+                create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
                 
             else:
                 print(f'No matching JobID: {jobId}???')

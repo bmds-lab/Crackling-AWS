@@ -38,12 +38,11 @@ def caller(*args, **kwargs):
     call(*args, **kwargs)
 
 # Put log object in to s3 bucket
-def create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, func_name):
+def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
     context_dict = {
         "log_group_name": context.log_group_name,
         "request_id": context.aws_request_id,
-        "sequence": sequence
     }
     
     context_string = json.dumps(context_dict, default=str)
@@ -234,10 +233,12 @@ def lambda_handler(event, context):
             'Consensus'     : "",
         }
         
+        #METRIC CODE
+
         #log name based on request_id, a unique identifier
         output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
         #store lambda id for future logging
-        create_log(s3_client, s3_log_bucket, context, genome, "-", message['JobID'], output)
+        create_log(s3_client, s3_log_bucket, context, genome, message['JobID'], output)
     
         ReceiptHandles.append(record['receiptHandle'])
        

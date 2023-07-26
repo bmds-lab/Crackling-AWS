@@ -137,7 +137,6 @@ def sum_filesize(accession):
 def lambda_handler(event, context):
     args,body = recv(event)
     accession = args['Genome']
-    sequence = args['Sequence']
     jobid = args['JobID']
 
     if accession == 'fail':
@@ -174,7 +173,7 @@ def lambda_handler(event, context):
         print("All Done... Terminating Program.")
         return tmp_dir
     
-    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'Downloader')
+    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     BT2_QUEUE = os.getenv('BT2_QUEUE')

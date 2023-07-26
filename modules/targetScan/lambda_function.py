@@ -143,7 +143,7 @@ def lambda_handler(event, context):
     sequence = params['Sequence']
     jobid = params['JobID']
     
-    create_log(s3_client, s3_log_bucket, context, accession, sequence, jobid, 'TargetScan')
+    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
     
     find_targets(params)
         #print('Processed INSERT event for {}.'.format(jobid))

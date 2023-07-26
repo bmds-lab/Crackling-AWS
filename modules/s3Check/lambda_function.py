@@ -18,10 +18,6 @@ def filetest(s3_bucket,key):
     except ClientError:
         return ""
 
-def create_multiple_logs(content, context, name):
-    json_string = json.loads(content)
-    create_log(s3_client, s3_log_bucket, context, json_string['Genome'] , json_string['Sequence'], json_string['JobID'], name)
-
 def lambda_handler(event, context):
     # get bucket
     bucket = event['Records'][0]['s3']['bucket']['name']
@@ -37,13 +33,9 @@ def lambda_handler(event, context):
         # test what bucket key is and if other lambda has finished
         if "bt2" in key:
             print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
-            #store lambda id for event matching bt2 key
-            create_multiple_logs(filetest(bucket,bt2test), context, 'S3CheckBt2')
             file_content = filetest(bucket,issltest)
         elif "issl" in key:
             print(f"\"{issltest}\" exists.\nTesting to see if \"{bt2test}\" is present.")
-            #store lambda id for event matching issl key
-            create_multiple_logs(filetest(bucket,issltest), context, 'S3CheckIssl')
             file_content = filetest(bucket,bt2test)
         
         # if both lambdas have finished, Send and SQS message

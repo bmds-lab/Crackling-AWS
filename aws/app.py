@@ -27,7 +27,7 @@ from aws_cdk import (
     aws_s3_notifications as s3_notify,
 )
 
-version = "DevTagger"
+version = "Bench-1"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -130,11 +130,6 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
         
-        #Layer for codeguru profiling
-        lambdaCodeguru = lambda_.LayerVersion.from_layer_version_arn(self, "LambdaCodeGuruLayer",
-            "arn:aws:lambda:ap-southeast-2:157417159150:layer:AWSCodeGuruProfilerPythonAgentLambdaLayer:11"
-        )
-        
         ### Layers required for downloader and assoc. layers, explained in ../layers/README.md
         # This layer provides the bowtie2 "binaries"/script files
         lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
@@ -172,8 +167,6 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/createJob"),
             layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
             vpc=cracklingVpc,# was this meant to be left commented
@@ -250,10 +243,8 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/scheduler"),
-            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib, lambdaCodeguru],
+            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
             timeout= duration,
             environment={
@@ -266,7 +257,6 @@ class CracklingStack(Stack):
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
                 "REGION" : "ap-southeast-2",
                 "EC2_CUTOFF" : str(650),
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 "LOG_BUCKET": s3Log.bucket_name
             }
         )
@@ -285,17 +275,6 @@ class CracklingStack(Stack):
             resources=["*"]
         ))
         
-        lambdaScheduler.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
-        )
                 
         s3Genome.grant_read_write(lambdaScheduler)
         s3Log.grant_read_write(lambdaScheduler)
@@ -313,10 +292,8 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/downloader"),
-            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib, lambdaCodeguru],
+            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -329,22 +306,10 @@ class CracklingStack(Stack):
                 'BT2_QUEUE' : sqsBowtie2.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
         
-        lambdaDownloader.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
-        )
         
         ddbJobs.grant_read_write_data(lambdaDownloader)
         sqsIsslCreaton.grant_send_messages(lambdaDownloader)
@@ -363,7 +328,6 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
             code=lambda_.Code.from_asset("../modules/bowtie2"),
             layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
             vpc=cracklingVpc,
@@ -391,10 +355,8 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/isslCreation"),
-            layers=[lambdaCodeguru, lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
+            layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -403,21 +365,10 @@ class CracklingStack(Stack):
                 'BUCKET' : s3Genome.bucket_name,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
-        lambdaIsslCreation.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
-        )
+
         s3Genome.grant_read_write(lambdaIsslCreation)
         s3Log.grant_read_write(lambdaIsslCreation)
         sqsIsslCreaton.grant_consume_messages(lambdaIsslCreation)
@@ -432,32 +383,18 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/s3Check"),
-            layers=[lambdaLayerCommonFuncs, lambdaCodeguru],
+            layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path, 
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
         
-        lambdaS3Check.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
-        )
         s3Genome.grant_read_write(lambdaS3Check)
         s3Log.grant_read_write(lambdaS3Check)
         # Create trigger for Lambda function using suffix
@@ -477,10 +414,8 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/targetScan"),
-            layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs, lambdaCodeguru],
+            layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -491,22 +426,10 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
         
-        lambdaTargetScan.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
-        )
         s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
@@ -525,7 +448,6 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
@@ -556,10 +478,8 @@ class CracklingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            tracing = lambda_.Tracing.ACTIVE,
-            profiling = True,
             code=lambda_.Code.from_asset("../modules/issl"),
-            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs, lambdaCodeguru],
+            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -571,21 +491,8 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
-                "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
                 'LOG_BUCKET': s3Log.bucket_name
             }
-        )
-        
-        lambdaIssl.add_to_role_policy(
-            iam_.PolicyStatement(
-                effect = iam_.Effect.ALLOW,
-                actions = [
-                    "codeguru-profiler:ConfigureAgent",
-                    "codeguru-profiler:CreateProfilingGroup",
-                    "codeguru-profiler:PostAgentProfile",
-                ],
-                resources = ["arn:aws:codeguru-profiler:*:*:profilingGroup/*"],
-            )
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
         lambdaIssl.add_event_source_mapping(
@@ -725,7 +632,7 @@ class CracklingStack(Stack):
 
 
 app = cdk.App()
-CracklingStack(app, f"CracklingStack{version}")
+CracklingStack(app, f"CracklingStack-{version}")
 app.synth()
 
 # 12:23:17 PM | CREATE_FAILED        | AWS::Lambda::EventSourceMapping       | bowtie2/mapLdaSqsBowtie
