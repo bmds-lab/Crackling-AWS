@@ -27,8 +27,7 @@ consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
 sqs_client = boto3.client('sqs')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
-s3_log_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
+s3_log_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
@@ -126,7 +125,7 @@ def _CalcRnaFold(seqs):
         if not ( 
                 (seq[-2:] == 'GG' and seq[0] == 'T') or 
                 (seq[:2] == 'CC' and seq[-1] == 'A')
-            ):
+            ): 
         
             L1 = RNA_structures[2 * i].rstrip()
             L2 = RNA_structures[2 * i + 1].rstrip()
