@@ -82,6 +82,7 @@ class CracklingStack(Stack):
         # VPC access point for Genome storage
         s3Genome_access = s3_.CfnAccessPoint(
             scope=self,
+            bucket=s3Genome.bucket_name,
             id="s3Genome_access",
             name="s3Genome_access",
             vpc_configuration=s3_.CfnAccessPoint.VpcConfigurationProperty(
@@ -286,7 +287,7 @@ class CracklingStack(Stack):
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attrArn,
+                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attr_arn,
                 "AMI": "ami-0a3394674772b58a3",
                 "INSTANCE_TYPE": "r5ad.2xlarge",
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
@@ -351,7 +352,7 @@ class CracklingStack(Stack):
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attrArn,
+                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attr_arn,
                 'ISSL_QUEUE' : sqsIsslCreaton.queue_url,
                 'BT2_QUEUE' : sqsBowtie2.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
@@ -399,7 +400,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attrArn,
+                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -429,7 +430,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attrArn,
+                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 "AWS_LAMBDA_EXEC_WRAPPER": "/opt/codeguru_profiler_lambda_exec",
@@ -595,7 +596,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attrArn,
+                'GENOME_ACCESS_POINT_ARN' : s3Genome_access.attr_arn,
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
