@@ -127,8 +127,8 @@ The consensus module has Python dependencies that need to be installed. They nee
 
 Working in the root directory of the repo, run:
 ```
+mkdir ./layers/consensusPy38Pkgs/python
 python3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
-
 ```
 
 Read more in the AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-dependencies
