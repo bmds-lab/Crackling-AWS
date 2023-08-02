@@ -121,7 +121,7 @@ ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '
 
 The `pip install -r' command is used frequently throught the following section. In some enviroments, this command errors out. If this occours, please view the requirments.txt file (referenced in the command) and use pip to install each library manually.
 
-**Concensus Layer**
+**Consensus Layer**
 
 The consensus module has Python dependencies that need to be installed. They need to be installed and packaged locally before deploying to AWS.
 
