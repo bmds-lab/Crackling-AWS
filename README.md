@@ -48,7 +48,7 @@ Please refer to our paper when using Crackling:
 $ sudo apt-get update
 
 # install aws cli
-$ sudo apt-get awscli
+$ sudo apt-get install awscli
 
 # configure aws credentials (config and cred files can be found in . ~/aws (hidden files) in linux/windows)
 # Use the following settings:
