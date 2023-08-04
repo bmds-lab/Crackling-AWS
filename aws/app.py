@@ -45,7 +45,10 @@ class CracklingStack(Stack):
             #add s3 gateway
             gateway_endpoints={
                 "s3" : ec2_.GatewayVpcEndpointOptions(
-                    service=ec2_.GatewayVpcEndpointAwsService.S3
+                    service=ec2_.GatewayVpcEndpointAwsService.S3,
+                ),
+                "DYNAMODB" : ec2_.GatewayVpcEndpointOptions(
+                    service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
             }#,nat_gateways=0
         )
