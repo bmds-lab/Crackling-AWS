@@ -27,7 +27,7 @@ from aws_cdk import (
     aws_s3_notifications as s3_notify,
 )
 
-version = "-Dev-1"
+version = "-Dev-1-v1"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -45,7 +45,7 @@ class CracklingStack(Stack):
             #add s3 gateway
             gateway_endpoints={
                 "s3" : ec2_.GatewayVpcEndpointOptions(
-                    service=ec2_.GatewayVpcEndpointAwsService.S3,
+                    service=ec2_.GatewayVpcEndpointAwsService.S3
                 ),
                 "DYNAMODB" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
