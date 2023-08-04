@@ -50,7 +50,8 @@ class CracklingStack(Stack):
                 "DYNAMODB" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
-            }#,nat_gateways=0
+            }
+            ,nat_gateways=0
         )
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
