@@ -38,9 +38,9 @@ def lambda_handler(event, context):
         try:
             job_request = json.loads(event['body'])
         except:
-            return return_http_json('Error parsing request body. Is it properly formatted JSON?')
+            return return_http_json('Error parsing request body. Is it properly formatted JSON?',400)
     else:
-        return return_http_json('No body sent with request')
+        return return_http_json('No body sent with request',400)
 
     if 'sequence' in job_request:
         sequence = job_request['sequence'].replace('\r\n', '').replace('\r', '').replace('\n', '').replace(' ', '')
