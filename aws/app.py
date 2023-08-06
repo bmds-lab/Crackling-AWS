@@ -281,7 +281,7 @@ class CracklingStack(Stack):
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3GenomeAccess.attr_arn,
+                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 "AMI": "ami-0a3394674772b58a3",
                 "INSTANCE_TYPE": "r5ad.2xlarge",
                 "EC2_ARN" : cfn_instance_profile.attr_arn,
@@ -332,7 +332,7 @@ class CracklingStack(Stack):
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3GenomeAccess.attr_arn,
+                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'ISSL_QUEUE' : sqsIsslCreaton.queue_url,
                 'BT2_QUEUE' : sqsBowtie2.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
@@ -367,7 +367,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3GenomeAccess.attr_arn,
+                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -395,7 +395,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3GenomeAccess.attr_arn,
+                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -519,7 +519,7 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : s3GenomeAccess.attr_arn,
+                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
@@ -666,5 +666,5 @@ class CracklingStack(Stack):
 
 
 app = cdk.App()
-CracklingStack(app, f"CracklingStack-{version}")
+CracklingStack(app, f"CracklingStack{version}")
 app.synth()
