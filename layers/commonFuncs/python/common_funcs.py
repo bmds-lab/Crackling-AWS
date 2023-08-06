@@ -172,14 +172,12 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     shutil.rmtree(path)
     
 # Put log object in to s3 bucket
-def create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, func_name):
+def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
     context_dict = {
         "log_group_name": context.log_group_name,
-        "request_id": context.aws_request_id,
-        "sequence": sequence
+        "request_id": context.aws_request_id
     }
-    
     context_string = json.dumps(context_dict, default=str)
     
     #upload json context based on genome chosen and jobid
@@ -189,28 +187,6 @@ def create_log(s3_client, s3_log_bucket, context, genome, sequence, jobid, func_
         Body = context_string
     )
     
-    
-# Check if input directory exists in the s3 log directory current directory
-def check_dir_log(s3_client, s3_log_bucket, genome, jobid, input_directory):
-    path_dir = f'{genome}/jobs/{jobid}/{input_directory}/'
-    #check if there are objects in chosen path
-    result = s3_client.list_objects(Bucket = s3_log_bucket, Prefix=path_dir)
-    exists = False
-    if 'Contents' in result:
-        exists = True
-    return exists
-
-# Get the number of objects currently in the s3 log directory with specific input directory
-def check_dir_num(s3_client, s3_log_bucket, genome, jobid, input_directory):
-    path_dir = f'{genome}/jobs/{jobid}/{input_directory}/'
-    #get list of objects in chosen path
-    response = s3_client.list_objects_v2(Bucket = s3_log_bucket, Prefix=path_dir)
-    count = 0
-    for object in response['Contents']:
-        if object['Size'] != 0:
-            count += 1
-    return count
-    	
 # Thread task to write to csv if about to run out of execution time
 def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key):
     testtime = time_ns()

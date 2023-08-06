@@ -78,7 +78,7 @@ def lambda_handler(event, context):
     })
 
     #Store lambda id for logging purposes
-    create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, 'CreateJob')
+    create_log(s3_log_client, s3_log_bucket, context, genome, jobid, 'CreateJob')
     
     return {
         "statusCode": 200,

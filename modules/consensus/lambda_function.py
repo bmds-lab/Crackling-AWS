@@ -43,7 +43,6 @@ def create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, f
     context_dict = {
         "log_group_name": context.log_group_name,
         "request_id": context.aws_request_id,
-        "sequence": sequence
     }
     
     context_string = json.dumps(context_dict, default=str)
@@ -234,6 +233,8 @@ def lambda_handler(event, context):
             'Consensus'     : "",
         }
         
+        #METRIC CODE
+
         #log name based on request_id, a unique identifier
         output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
         #store lambda id for future logging

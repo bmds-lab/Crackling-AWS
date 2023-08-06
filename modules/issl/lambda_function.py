@@ -139,6 +139,8 @@ def lambda_handler(event, context):
                 
                 print(jobId, genome)
 
+                #METRIC  CODE
+                
                 #log name based on request_id, a unique identifier
                 output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
                 #store lambda id for future logging
