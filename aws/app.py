@@ -54,6 +54,22 @@ class CracklingStack(Stack):
             ,nat_gateways=0
         )
 
+        ### VPC Security Group
+        # Allow certain access in/out of the VPC's internet gateway
+        vpcAllAccess = ec2_.SecurityGroup(
+            self,
+            "All Access In/Out",
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
+            description="Allow all In/Out Access to Crackling VPC. This should be refined to specfic addresses in future",
+            allow_all_outbound=True,
+        ) CHECK SYNTAX BEFORE DEPLOYING
+        vpcAllAccess.add_ingress_rule(
+            peer=ec2_.Peer.any_ipv4(),
+            connection=ec2_.Port.all_traffic()
+        )
+
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
         s3Frontend = s3_.Bucket(self,
@@ -198,7 +214,9 @@ class CracklingStack(Stack):
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/createJob"),
             layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
-            vpc=cracklingVpc,# was this meant to be left commented
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],# was this meant to be left commented
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
@@ -275,6 +293,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/scheduler"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             environment={
                 'QUEUE' : sqsDownload.queue_url,
@@ -325,6 +345,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/downloader"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -362,6 +384,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/bowtie2"),
             layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -390,6 +414,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/isslCreation"),
             layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -419,6 +445,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/s3Check"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
@@ -450,6 +478,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/targetScan"),
             layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -484,6 +514,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -514,6 +546,8 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/issl"),
             layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
