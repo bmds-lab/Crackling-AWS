@@ -13,14 +13,14 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
+genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
 s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 starttime = time_ns()
 
 # Create S3 client
 s3_log_client = boto3.client('s3')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
+s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
 
 def clean_s3_folder(accession):
     try:
@@ -139,7 +139,6 @@ def sum_filesize(accession):
 def lambda_handler(event, context):
     args,body = recv(event)
     accession = args['Genome']
-    sequence = args['Sequence']
     jobid = args['JobID']
 
     if accession == 'fail':

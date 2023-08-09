@@ -40,9 +40,9 @@ def CalcIssl(targets, genome):
 
     # download from s3 based on accession
     s3_log_client = boto3.client('s3')
-    s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
+    s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
     s3_bucket = os.environ['BUCKET']
-    genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
+    genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
     
     _, issl_file = s3_files_to_tmp(s3_log_client,s3_bucket,genome,".issl")
 
@@ -139,6 +139,8 @@ def lambda_handler(event, context):
                 
                 print(jobId, genome)
 
+                #METRIC  CODE
+                
                 #log name based on request_id, a unique identifier
                 output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
                 #store lambda id for future logging

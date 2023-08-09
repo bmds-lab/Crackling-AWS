@@ -7,7 +7,7 @@ from common_funcs import *
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
+genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
 s3_log_bucket = os.environ['LOG_BUCKET']
 ec2 = False
 tmp_Dir = ""
@@ -15,7 +15,7 @@ starttime = time_ns()
 
 # Create S3 client
 s3_log_client = boto3.client('s3')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
+s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
 
 #Build Bowtie2
 def bowtie2(accession, tmp_fasta_dir, chr_fns):

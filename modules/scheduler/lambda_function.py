@@ -9,7 +9,7 @@ except ImportError:
 
 AMI = os.environ['AMI']
 BUCKET = os.environ['BUCKET']
-genome_access_point_arnq = os.environ['GENOME_ACCESS_POINT_ARN']
+genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
 INSTANCE_TYPE = os.environ['INSTANCE_TYPE']
 REGION = os.environ['REGION']
 QUEUE = os.environ['QUEUE']
@@ -18,7 +18,7 @@ EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
 s3_log_bucket = os.environ['LOG_BUCKET']
 s3_log_client = boto3.client('s3')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arnq)
+s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
 
 def SpawnLambda(dictionary):
     print("Spinning up lambdas for download, bowtie & isslCreation")
@@ -113,7 +113,7 @@ def lambda_handler(event, context):
         else:
             SpawnLambda(dictionary)
             #Store lambda id for logging purposes
-            create_log(s3_log_client s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
+            create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
     else:
         ChromosomeLength = ChromosomeLength / 1048576
         if (ChromosomeLength == 0) or (ChromosomeLength > EC2_CUTOFF):
