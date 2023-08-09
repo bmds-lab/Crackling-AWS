@@ -8,7 +8,7 @@ import re
 import ast
 import time
 
-from sklearn.svm import SVC
+# from sklearn.svm import SVC
 from subprocess import call
 
 SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')

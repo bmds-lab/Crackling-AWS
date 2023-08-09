@@ -1,7 +1,6 @@
 joblib
 numpy
-scikit-learn
+# scikit-learn  
 scipy
 threadpoolctl
 wheel
-

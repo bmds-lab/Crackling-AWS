@@ -112,13 +112,13 @@ def lambda_handler(event, context):
             SpawnEC2(genome,jobid,sequence)
         else:
             SpawnLambda(dictionary)
-             #Store lambda id for logging purposes
-           create_log(s3_log_client s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
+            #Store lambda id for logging purposes
+            create_log(s3_log_client s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
     else:
         ChromosomeLength = ChromosomeLength / 1048576
         if (ChromosomeLength == 0) or (ChromosomeLength > EC2_CUTOFF):
             SpawnEC2(genome,jobid,sequence)
         else:
             SpawnLambda(dictionary)
-             #Store lambda id for logging purposes
-           create_log(s3_log_client s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
+            #Store lambda id for logging purposes
+            create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, 'Scheduler')
