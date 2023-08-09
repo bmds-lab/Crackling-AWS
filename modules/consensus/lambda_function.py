@@ -38,7 +38,7 @@ def caller(*args, **kwargs):
     call(*args, **kwargs)
 
 # Put log object in to s3 bucket
-def create_log(s3_log_client, s3_log_bucket, context, genome, sequence, jobid, func_name):
+def create_log(s3_log_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
     context_dict = {
         "log_group_name": context.log_group_name,
