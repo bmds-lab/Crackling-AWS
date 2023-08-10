@@ -28,6 +28,8 @@ from aws_cdk import (
 )
 
 version = "-Dev-1-v1"
+availabilityZone = "ap-southeast-2a"
+availabilityZoneCIDR = "10.0.0.0/18"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -54,21 +56,63 @@ class CracklingStack(Stack):
             ,nat_gateways=0
         )
 
-        ### VPC Security Group
+        ## VPC Subnet 
+        # Create a public subnet for internet facing operations
+        publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}",
+            vpc_id=cracklingVpc.vpc_id,
+            availability_zone=availabilityZone,
+            cidr_block = availabilityZoneCIDR
+        )
+        
+        ## VPC Security Group
         # Allow certain access in/out of the VPC's internet gateway
         vpcAllAccess = ec2_.SecurityGroup(
             self,
             "All Access In/Out",
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
-            security_groups=[vpcAllAccess],
             description="Allow all In/Out Access to Crackling VPC. This should be refined to specfic addresses in future",
             allow_all_outbound=True,
-        ) CHECK SYNTAX BEFORE DEPLOYING
+        )
         vpcAllAccess.add_ingress_rule(
             peer=ec2_.Peer.any_ipv4(),
             connection=ec2_.Port.all_traffic()
         )
+
+        
+
+        ## Add Public Elastic IP (EIP)
+        # We need a public EIP in order for a lambda to communicate outside of the VPC without using a NAT.
+        #  This address is assigned after lambda creation
+        # Create EIP
+        publicElasticIP = ec2_.CfnEIP(
+            self,
+            "CracklingPublicEIP{version}"
+        )
+
+        # Associate with VPC
+        ec2_.CfnEIPAssociation(
+            self,
+            f"CracklingPublicEIPAssociation{version}",
+            eip=publicElasticIP.ref,
+            instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
+        )
+
+        #below EIP will be removed with scheduler
+        publicElasticIPSchedulder = ec2_.CfnEIP(
+            self,
+            "CracklingPublicEIPScheduler{version}"
+        )
+
+        # Associate with VPC
+        ec2_.CfnEIPAssociation(
+            self,
+            f"CracklingPublicEIPAssociationScheduler{version}",
+            eip=publicElasticIPSchedulder.ref,
+            instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
+        )
+
+
+
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
@@ -215,7 +259,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/createJob"),
             layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            # 
             security_groups=[vpcAllAccess],# was this meant to be left commented
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
@@ -293,7 +337,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/scheduler"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            vpc_subnets=ec2_.SubnetSelection(subnets=[publicSubnet]),
             security_groups=[vpcAllAccess],
             timeout= duration,
             environment={
@@ -308,7 +352,8 @@ class CracklingStack(Stack):
                 "REGION" : "ap-southeast-2",
                 "EC2_CUTOFF" : str(650),
                 "LOG_BUCKET": s3Log.bucket_name
-            }
+            },
+            allowPublicSubnet=True
         )
         
        
@@ -336,7 +381,22 @@ class CracklingStack(Stack):
             retry_attempts=0,
             starting_position=lambda_.StartingPosition.LATEST
         )
+
+        ## Assign IP
+
+
         
+
+        lambdaSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
+            self,
+            "SchedulerNetorkInterfaceAttachment",
+            device_index=0,
+            instance_id=getLambdaSubnetInterface(lambdaScheduler, publicSubnet).network_interface_id,
+            network_interface_id=publicElasticIPSchedulder.attr_allocation_id,
+            delete_on_termination=False
+        )
+
+
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_8,
@@ -345,7 +405,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/downloader"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            vpc_subnets=ec2_.SubnetSelection(subnets=[publicSubnet]),
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -360,7 +420,8 @@ class CracklingStack(Stack):
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
-            }
+            },
+            allowPublicSubnet=True
         )
         
         
@@ -384,7 +445,6 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/bowtie2"),
             layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -414,7 +474,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/isslCreation"),
             layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -445,7 +505,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/s3Check"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            
             security_groups=[vpcAllAccess],
             timeout= duration,
             environment={
@@ -478,7 +538,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/targetScan"),
             layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -514,7 +574,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -546,7 +606,7 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/issl"),
             layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC), SYNTAX CHECK THIS
+            
             security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
@@ -698,6 +758,15 @@ class CracklingStack(Stack):
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
+## Helper functions
+def getLambdaSubnetInterface(lambdaFunc, subnet):
+    # find public network interface
+    for interface in lambdaFunc.connections.network_interfaces:
+        if interface.subnet.subnet_id == subnet.subnet_id:
+            return interface
+    
+    raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
+        
 
 app = cdk.App()
 CracklingStack(app, f"CracklingStack{version}")
