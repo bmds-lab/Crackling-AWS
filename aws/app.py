@@ -30,6 +30,7 @@ from aws_cdk import (
 version = "-Dev-1-v1"
 availabilityZone = "ap-southeast-2a"
 availabilityZoneCIDR = "10.0.0.0/18"
+# availabilityZoneCIDR = "18" is it just the mask??
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -52,13 +53,25 @@ class CracklingStack(Stack):
                 "DYNAMODB" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
-            }
-            ,nat_gateways=0
+            },
+            nat_gateways=0,
+            subnet_configuration=[ 
+                ec2_.SubnetConfiguration(
+                    name=f"Crackling{version}-PrivateSubnet",
+                    subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED,
+                    cidr_mask=20
+                ),
+                ec2_.SubnetConfiguration(
+                    name=f"Crackling{version}-PublicSubnet-0",
+                    subnet_type=ec2_.SubnetType.PUBLIC,
+                    cidr_mask=20
+                ),
+            ]
         )
 
         ## VPC Subnet 
         # Create a public subnet for internet facing operations
-        publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}",
+        publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}-1",
             vpc_id=cracklingVpc.vpc_id,
             availability_zone=availabilityZone,
             cidr_block = availabilityZoneCIDR
