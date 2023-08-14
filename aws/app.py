@@ -71,7 +71,7 @@ class CracklingStack(Stack):
 
         ## VPC Subnet 
         # Create a public subnet for internet facing operations
-        publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}-1",
+        publicSubnet = ec2_.Subnet(self, f"Crackling{version}-PublicSubnet-1",
             vpc_id=cracklingVpc.vpc_id,
             availability_zone=availabilityZone,
             cidr_block = availabilityZoneCIDR
