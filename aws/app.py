@@ -97,6 +97,13 @@ class CracklingStack(Stack):
             instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
         )
 
+        downloaderInterface = ec2_.CfnNetworkInterface(
+            self,
+            f"Crackling{version}-downloaderInterface",
+            subnet_id=publicSubnet.subnet_id,
+            group_set=[vpcAllAccess.group_id]
+        )
+
         #below EIP will be removed with scheduler
         publicElasticIPSchedulder = ec2_.CfnEIP(
             self,
@@ -109,6 +116,13 @@ class CracklingStack(Stack):
             f"CracklingPublicEIPAssociationScheduler{version}",
             eip=publicElasticIPSchedulder.ref,
             instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
+        )
+
+        schedulerInterface = ec2_.CfnNetworkInterface(
+            self,
+            f"Crackling{version}-schedulerInterface",
+            subnet_id=publicSubnet.subnet_id,
+            group_set=[vpcAllAccess.group_id]
         )
 
 
@@ -384,15 +398,12 @@ class CracklingStack(Stack):
 
         ## Assign IP
 
-
-        
-
         lambdaSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
             self,
             "SchedulerNetorkInterfaceAttachment",
             device_index=0,
-            instance_id=getLambdaSubnetInterface(lambdaScheduler, publicSubnet).network_interface_id,
-            network_interface_id=publicElasticIPSchedulder.attr_allocation_id,
+            instance_id=publicElasticIPSchedulder.attr_allocation_id,
+            network_interface_id=schedulerInterface.attr_id,
             delete_on_termination=False
         )
 
@@ -435,7 +446,20 @@ class CracklingStack(Stack):
             batch_size=1
         )
         s3Genome.grant_read_write(lambdaDownloader)   
-        s3Log.grant_read_write(lambdaDownloader)      
+        s3Log.grant_read_write(lambdaDownloader)
+
+
+        
+        ## Assign IP
+
+        downloaderSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
+            self,
+            "SchedulerNetorkInterfaceAttachment",
+            device_index=0,
+            instance_id=publicElasticIP.attr_allocation_id,
+            network_interface_id=downloaderInterface.attr_id,
+            delete_on_termination=False
+        )      
 
         # -> -> bt2
         lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
@@ -758,14 +782,14 @@ class CracklingStack(Stack):
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
-## Helper functions
-def getLambdaSubnetInterface(lambdaFunc, subnet):
-    # find public network interface
-    for interface in lambdaFunc.connections.network_interfaces:
-        if interface.subnet.subnet_id == subnet.subnet_id:
-            return interface
+# ## Helper functions
+# def getLambdaSubnetInterface(lambdaFunc, subnet):
+#     # find public network interface
+#     for interface in lambdaFunc.connections.network_interfaces:
+#         if interface.subnet.subnet_id == subnet.subnet_id:
+#             return interface
     
-    raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
+#     raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
         
 
 app = cdk.App()
