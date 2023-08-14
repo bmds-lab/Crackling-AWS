@@ -461,34 +461,34 @@ class CracklingStack(Stack):
             delete_on_termination=False
         )      
 
-        # -> -> bt2
-        lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
-            handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            code=lambda_.Code.from_asset("../modules/bowtie2"),
-            layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
-            vpc=cracklingVpc,
-            security_groups=[vpcAllAccess],
-            timeout= duration,
-            memory_size= 10240,
-            ephemeral_storage_size = cdk.Size.gibibytes(10),
-            environment={
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-                'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
-            }
-        )
-        s3Genome.grant_read_write(lambdaBowtie2)
-        s3Log.grant_read_write(lambdaBowtie2)
-        sqsBowtie2.grant_consume_messages(lambdaBowtie2)
-        lambdaBowtie2.add_event_source_mapping(
-            "mapLdaSqsBowtie",
-            event_source_arn=sqsBowtie2.queue_arn,
-            batch_size=1
-        )
+        # # -> -> bt2
+        # lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
+        #     runtime=lambda_.Runtime.PYTHON_3_8,
+        #     handler="lambda_function.lambda_handler",
+        #     insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+        #     code=lambda_.Code.from_asset("../modules/bowtie2"),
+        #     layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
+        #     vpc=cracklingVpc,
+        #     security_groups=[vpcAllAccess],
+        #     timeout= duration,
+        #     memory_size= 10240,
+        #     ephemeral_storage_size = cdk.Size.gibibytes(10),
+        #     environment={
+        #         'BUCKET' : s3Genome.bucket_name,
+        #         'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+        #         'LD_LIBRARY_PATH' : ld_library_path,
+        #         'PATH' : path,
+        #         'LOG_BUCKET': s3Log.bucket_name
+        #     }
+        # )
+        # s3Genome.grant_read_write(lambdaBowtie2)
+        # s3Log.grant_read_write(lambdaBowtie2)
+        # sqsBowtie2.grant_consume_messages(lambdaBowtie2)
+        # lambdaBowtie2.add_event_source_mapping(
+        #     "mapLdaSqsBowtie",
+        #     event_source_arn=sqsBowtie2.queue_arn,
+        #     batch_size=1
+        # )
 
         # -> -> issl_creation
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
