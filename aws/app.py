@@ -54,8 +54,20 @@ class CracklingStack(Stack):
                 "DYNAMODB" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
-            }
-            ,nat_gateways=0
+            },
+            nat_gateways=0,
+            subnet_configuration=[ 
+                ec2_.SubnetConfiguration(
+                    name=f"Crackling{version}-PrivateSubnet",
+                    subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED,
+                    cidr_mask=20
+                ),
+                ec2_.SubnetConfiguration(
+                    name=f"Crackling{version}-PublicSubnet-0",
+                    subnet_type=ec2_.SubnetType.PUBLIC,
+                    cidr_mask=20
+                ),
+            ]
         )
 
         ## VPC Subnet 
@@ -97,6 +109,13 @@ class CracklingStack(Stack):
             f"CracklingPublicEIPAssociation{version}",
             eip=publicElasticIP.ref,
             instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
+        )
+
+        downloaderInterface = ec2_.CfnNetworkInterface(
+            self,
+            f"Crackling{version}-downloaderInterface",
+            subnet_id=publicSubnet.subnet_id,
+            group_set=[vpcAllAccess.group_id]
         )
 
         #below EIP will be removed with scheduler
@@ -440,36 +459,49 @@ class CracklingStack(Stack):
             batch_size=1
         )
         s3Genome.grant_read_write(lambdaDownloader)   
-        s3Log.grant_read_write(lambdaDownloader)      
+        s3Log.grant_read_write(lambdaDownloader)
 
-        # -> -> bt2
-        lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
-            handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            code=lambda_.Code.from_asset("../modules/bowtie2"),
-            layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
-            vpc=cracklingVpc,
-            security_groups=[vpcAllAccess],
-            timeout= duration,
-            memory_size= 10240,
-            ephemeral_storage_size = cdk.Size.gibibytes(10),
-            environment={
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-                'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
-            }
-        )
-        s3Genome.grant_read_write(lambdaBowtie2)
-        s3Log.grant_read_write(lambdaBowtie2)
-        sqsBowtie2.grant_consume_messages(lambdaBowtie2)
-        lambdaBowtie2.add_event_source_mapping(
-            "mapLdaSqsBowtie",
-            event_source_arn=sqsBowtie2.queue_arn,
-            batch_size=1
-        )
+
+        
+        ## Assign IP
+
+        downloaderSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
+            self,
+            "SchedulerNetorkInterfaceAttachment",
+            device_index=0,
+            instance_id=publicElasticIP.attr_allocation_id,
+            network_interface_id=downloaderInterface.attr_id,
+            delete_on_termination=False
+        )      
+
+        # # -> -> bt2
+        # lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
+        #     runtime=lambda_.Runtime.PYTHON_3_8,
+        #     handler="lambda_function.lambda_handler",
+        #     insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+        #     code=lambda_.Code.from_asset("../modules/bowtie2"),
+        #     layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
+        #     vpc=cracklingVpc,
+        #     security_groups=[vpcAllAccess],
+        #     timeout= duration,
+        #     memory_size= 10240,
+        #     ephemeral_storage_size = cdk.Size.gibibytes(10),
+        #     environment={
+        #         'BUCKET' : s3Genome.bucket_name,
+        #         'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+        #         'LD_LIBRARY_PATH' : ld_library_path,
+        #         'PATH' : path,
+        #         'LOG_BUCKET': s3Log.bucket_name
+        #     }
+        # )
+        # s3Genome.grant_read_write(lambdaBowtie2)
+        # s3Log.grant_read_write(lambdaBowtie2)
+        # sqsBowtie2.grant_consume_messages(lambdaBowtie2)
+        # lambdaBowtie2.add_event_source_mapping(
+        #     "mapLdaSqsBowtie",
+        #     event_source_arn=sqsBowtie2.queue_arn,
+        #     batch_size=1
+        # )
 
         # -> -> issl_creation
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
@@ -763,14 +795,15 @@ class CracklingStack(Stack):
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
-        #pull data out of class to be used after deployment
-        # postDeploymentData.accessZone = availabilityZone
-        # postDeploymentData.vpcID = CfnOutput(self, "vpcID", value=cracklingVpc.vpc_id).value
-        # postDeploymentData.subnetID = CfnOutput(self, "subnet_id", value=publicSubnet.subnet_id).value
-        # postDeploymentData.eipAllocID = CfnOutput(self, "attrAllocationId", value=publicElasticIP.attr_allocation_id).value
-        # postDeploymentData.lambdaName = CfnOutput(self, "functionName", value=lambdaScheduler.function_name).value
-
-
+# ## Helper functions
+# def getLambdaSubnetInterface(lambdaFunc, subnet):
+#     # find public network interface
+#     for interface in lambdaFunc.connections.network_interfaces:
+#         if interface.subnet.subnet_id == subnet.subnet_id:
+#             return interface
+    
+#     raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
+        
 
 app = cdk.App()
 CracklingStack(app, f"CracklingStack{version}")
