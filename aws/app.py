@@ -27,9 +27,12 @@ from aws_cdk import (
     aws_s3_notifications as s3_notify,
 )
 
-version = "-Dev-1-v1"
-availabilityZone = "ap-southeast-2a"
-availabilityZoneCIDR = "10.0.0.0/18"
+
+
+version = "-Dev-1-v2"
+# availabilityZone = "ap-southeast-2a"
+# availabilityZoneCIDR = "10.0.0.0/20"
+
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -43,7 +46,6 @@ class CracklingStack(Stack):
             scope=self,
             id=f"CracklingVpc{version}",
             vpc_name=f"CracklingVpc{version}",
-
             #add s3 gateway
             gateway_endpoints={
                 "s3" : ec2_.GatewayVpcEndpointOptions(
@@ -57,12 +59,12 @@ class CracklingStack(Stack):
         )
 
         ## VPC Subnet 
-        # Create a public subnet for internet facing operations
-        publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}",
-            vpc_id=cracklingVpc.vpc_id,
-            availability_zone=availabilityZone,
-            cidr_block = availabilityZoneCIDR
-        )
+        # # Create a public subnet for internet facing operations
+        # publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}",
+        #     vpc_id=cracklingVpc.vpc_id,
+        #     availability_zone=availabilityZone,
+        #     cidr_block = availabilityZoneCIDR
+        # )
         
         ## VPC Security Group
         # Allow certain access in/out of the VPC's internet gateway
@@ -109,6 +111,13 @@ class CracklingStack(Stack):
             f"CracklingPublicEIPAssociationScheduler{version}",
             eip=publicElasticIPSchedulder.ref,
             instance_id=cracklingVpc.vpc_id  # Associate with the VPC (replace with the appropriate resource ID)
+        )
+
+        schedulerENI = ec2_.CfnNetworkInterface(
+            self,
+            f"Crackling{version}-schedulerENI",
+            subnet_id=publicSubnet.subnet_id,
+            group_set=[vpcAllAccess.security_group_id]
         )
 
 
@@ -353,7 +362,6 @@ class CracklingStack(Stack):
                 "EC2_CUTOFF" : str(650),
                 "LOG_BUCKET": s3Log.bucket_name
             },
-            allowPublicSubnet=True
         )
         
        
@@ -383,16 +391,13 @@ class CracklingStack(Stack):
         )
 
         ## Assign IP
-
-
-        
-
         lambdaSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
             self,
             "SchedulerNetorkInterfaceAttachment",
-            device_index=0,
-            instance_id=getLambdaSubnetInterface(lambdaScheduler, publicSubnet).network_interface_id,
-            network_interface_id=publicElasticIPSchedulder.attr_allocation_id,
+            device_index="0",
+            # instance_id=getLambdaSubnetInterface(lambdaScheduler, publicSubnet).network_interface_id,
+            instance_id=publicElasticIPSchedulder.attr_allocation_id,
+            network_interface_id=schedulerENI.attr_id,
             delete_on_termination=False
         )
 
@@ -421,7 +426,7 @@ class CracklingStack(Stack):
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
             },
-            allowPublicSubnet=True
+            allow_public_subnet=True
         )
         
         
@@ -758,15 +763,14 @@ class CracklingStack(Stack):
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
-## Helper functions
-def getLambdaSubnetInterface(lambdaFunc, subnet):
-    # find public network interface
-    for interface in lambdaFunc.connections.network_interfaces:
-        if interface.subnet.subnet_id == subnet.subnet_id:
-            return interface
-    
-    raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
-        
+        #pull data out of class to be used after deployment
+        # postDeploymentData.accessZone = availabilityZone
+        # postDeploymentData.vpcID = CfnOutput(self, "vpcID", value=cracklingVpc.vpc_id).value
+        # postDeploymentData.subnetID = CfnOutput(self, "subnet_id", value=publicSubnet.subnet_id).value
+        # postDeploymentData.eipAllocID = CfnOutput(self, "attrAllocationId", value=publicElasticIP.attr_allocation_id).value
+        # postDeploymentData.lambdaName = CfnOutput(self, "functionName", value=lambdaScheduler.function_name).value
+
+
 
 app = cdk.App()
 CracklingStack(app, f"CracklingStack{version}")
