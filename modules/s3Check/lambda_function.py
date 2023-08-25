@@ -35,12 +35,16 @@ def lambda_handler(event, context):
         file_content = ""
 
         # test what bucket key is and if other lambda has finished
-        if "bt2" in key:
-            print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
-            file_content = filetest(bucket,issltest)
-        elif "issl" in key:
-            print(f"\"{issltest}\" exists.\nTesting to see if \"{bt2test}\" is present.")
-            file_content = filetest(bucket,bt2test)
+        # if triggered by bt2, check if ISSL is done, and vice versa 
+        # if "bt2" in key:
+        #     print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
+        #     file_content = filetest(bucket,issltest)
+        # elif "issl" in key:
+        #     print(f"\"{issltest}\" exists.\nTesting to see if \"{bt2test}\" is present.")
+        #     file_content = filetest(bucket,bt2test)
+        
+        # get content of issl
+        file_content = filetest(bucket,issltest)
         
         # if both lambdas have finished, Send and SQS message
         if(len(file_content)>0):
@@ -59,7 +63,8 @@ def lambda_handler(event, context):
             QUEUE = os.getenv('QUEUE')
             sendSQS(QUEUE,msg)
         else:
-            print("Waiting on other lambda function to finish.\n")
+            # print("Waiting on other lambda function to finish.\n")
+            raise Exception("ISSL file is empty")
 
     except Exception as e:
         print(e)

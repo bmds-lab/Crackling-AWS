@@ -180,7 +180,7 @@ def lambda_handler(event, context):
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     BT2_QUEUE = os.getenv('BT2_QUEUE')
     sendSQS(ISSL_QUEUE,body)
-    sendSQS(BT2_QUEUE,body)
+    # sendSQS(BT2_QUEUE,body)
         
     print("All Done... Terminating Program.")
 
