@@ -55,7 +55,7 @@ class CracklingStack(Stack):
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
             },
-            nat_gateways=0,
+            nat_gateways=1,
             subnet_configuration=[ 
                 ec2_.SubnetConfiguration(
                     name=f"Crackling{version}-PrivateSubnet",
