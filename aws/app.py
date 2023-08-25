@@ -352,8 +352,8 @@ class CracklingStack(Stack):
                 "REGION" : "ap-southeast-2",
                 "EC2_CUTOFF" : str(650),
                 "LOG_BUCKET": s3Log.bucket_name
-            },
-            allowPublicSubnet=True
+            }#,
+            # allowSubnet=True
         )
         
        
