@@ -108,7 +108,7 @@ class CracklingStack(Stack):
             subnet_id=cracklingVpc.public_subnets[0].subnet_id, 
             group_set=[vpcAllAccess.security_group_id]
         )
-        ### fuck this off ^^^^^ or assign it to the lambda??
+        ###  remove this  ^^^^^ or assign it to the lambda??
         assoc = ec2_.CfnEIPAssociation(
             self,
             f"CracklingSchedulerPublicEIPAssociation{version}",
