@@ -84,7 +84,7 @@ def lambda_handler(event, context):
     # Add run to s3 csv for logging
     s3_csv_append(s3_log_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
     
-    create_log(s3_log_client, s3_log_bucket, context, accession, sequence, jobid, 'Bowtie2')
+    create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'Bowtie2')
 
     #close temp fasta file directory
     if not ec2 and os.path.exists(tmp_dir):

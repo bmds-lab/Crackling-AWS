@@ -31,7 +31,7 @@ def lambda_handler(event, context):
     try:
         accession = "/".join(Path(key).parts[:-1])
         issltest = os.path.join(accession,'issl.notif')
-        bt2test = os.path.join(accession,'bt2.notif')
+        # bt2test = os.path.join(accession,'bt2.notif')
         file_content = ""
 
         # test what bucket key is and if other lambda has finished

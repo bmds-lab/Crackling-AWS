@@ -150,9 +150,6 @@ class CracklingStack(Stack):
         # )
 
 
-
-
-
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
         s3Frontend = s3_.Bucket(self,
@@ -321,12 +318,12 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
-        sqsBowtie2 = sqs_.Queue(self, "sqsBowtie2", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
-        )
-        sqsIsslCreaton = sqs_.Queue(self, "sqsIsslCreaton", 
+        # sqsBowtie2 = sqs_.Queue(self, "sqsBowtie2", 
+        #     receive_message_wait_time=Duration.seconds(1),
+        #     visibility_timeout=duration,
+        #     retention_period=duration
+        # )
+        sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
@@ -408,6 +405,10 @@ class CracklingStack(Stack):
             actions=["iam:*"],
             resources=["*"]
         ))
+        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+            actions=["logs:*"],
+            resources=["*"]
+        ))
         
                 
         s3Genome.grant_read_write(lambdaScheduler)
@@ -455,8 +456,8 @@ class CracklingStack(Stack):
                 'MAX_SEQ_LENGTH' : '20000',
                 'BUCKET' : s3Genome.bucket_name,
                 'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-                'ISSL_QUEUE' : sqsIsslCreaton.queue_url,
-                'BT2_QUEUE' : sqsBowtie2.queue_url,
+                'ISSL_QUEUE' : sqsIsslCreation.queue_url,
+                # 'BT2_QUEUE' : sqsBowtie2.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -466,8 +467,8 @@ class CracklingStack(Stack):
         
         
         ddbJobs.grant_read_write_data(lambdaDownloader)
-        sqsIsslCreaton.grant_send_messages(lambdaDownloader)
-        sqsBowtie2.grant_send_messages(lambdaDownloader)
+        sqsIsslCreation.grant_send_messages(lambdaDownloader)
+        # sqsBowtie2.grant_send_messages(lambdaDownloader)
         sqsDownload.grant_consume_messages(lambdaDownloader)
         lambdaDownloader.add_event_source_mapping(
             "mapLdaSqsDownload",
@@ -543,10 +544,10 @@ class CracklingStack(Stack):
 
         s3Genome.grant_read_write(lambdaIsslCreation)
         s3Log.grant_read_write(lambdaIsslCreation)
-        sqsIsslCreaton.grant_consume_messages(lambdaIsslCreation)
+        sqsIsslCreation.grant_consume_messages(lambdaIsslCreation)
         lambdaIsslCreation.add_event_source_mapping(
             "mapppIsslCreation",
-            event_source_arn=sqsIsslCreaton.queue_arn,
+            event_source_arn=sqsIsslCreation.queue_arn,
             batch_size=1
         )
 

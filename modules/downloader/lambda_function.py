@@ -176,11 +176,11 @@ def lambda_handler(event, context):
         print("All Done... Terminating Program.")
         return tmp_dir
     
-    create_log(s3_log_client, s3_log_bucket, context, accession, sequence, jobid, 'Downloader')
+    create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
-    BT2_QUEUE = os.getenv('BT2_QUEUE')
     sendSQS(ISSL_QUEUE,body)
+    # BT2_QUEUE = os.getenv('BT2_QUEUE')
     # sendSQS(BT2_QUEUE,body)
         
     print("All Done... Terminating Program.")
