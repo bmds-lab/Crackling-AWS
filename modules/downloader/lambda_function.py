@@ -138,6 +138,7 @@ def sum_filesize(accession):
 
 def lambda_handler(event, context):
     args,body = recv(event)
+    sequence = args['Sequence']
     accession = args['Genome']
     jobid = args['JobID']
 
