@@ -34,7 +34,7 @@ def lambda_handler(event, context):
         bt2test = os.path.join(accession,'bt2.notif')
         file_content = ""
 
-        # test what bucket key is and if other lambda has finished
+        # test what bucket key is and if other lambda has finisheddd
         # if triggered by bt2, check if ISSL is done, and vice versa 
         # if "bt2" in key:
         #     print(f"\"{bt2test}\" exists.\nTesting to see if \"{issltest}\" is present.")
