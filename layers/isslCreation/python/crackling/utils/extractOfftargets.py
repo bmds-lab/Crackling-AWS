@@ -145,7 +145,7 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
     
     # Open all the sorted files to merge
     printer(f'Beginning to merge sorted files, {maxNumOpenFiles:,} at a time')
-    while len(sortedFiles) > 1:
+    while len(sortedFiles) >= 1:  #confirm that changing this from  > 1 to >= 1 won't be an issue
         # A file to write the merged sequences to
         mergedFile = tempfile.NamedTemporaryFile(delete = False)
         
