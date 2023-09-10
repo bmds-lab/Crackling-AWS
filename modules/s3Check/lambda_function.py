@@ -56,7 +56,7 @@ def lambda_handler(event, context):
             )
             # clean-up files
             s3_delete(s3_log_client,bucket,issltest)
-            s3_delete(s3_log_client,bucket,bt2test)
+            # s3_delete(s3_log_client,bucket,bt2test)
 
             msg = file_content.decode("utf-8")
             print(f"Sending message to SQS: {msg}")
