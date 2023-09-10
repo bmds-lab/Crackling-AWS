@@ -219,8 +219,7 @@ def lambda_handler(event, context):
             message = json.loads(record['body'])
             genome = json.loads(message['genome'])
             message = json.loads(message['default'])
-        except e:
-            print(f"Exception: {e}")
+        except:
             continue
 
         if not all([x in message for x in ['Sequence', 'JobID', 'TargetID']]):

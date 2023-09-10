@@ -137,6 +137,18 @@ def sum_filesize(accession):
 
 
 def lambda_handler(event, context):
+    # DynamoDB data rec code
+    # genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
+    # jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
+    # sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
+    # print("EC2_CUTOFF",EC2_CUTOFF)
+    # dictionary ={ 
+    #     "Genome": genome, 
+    #     "Sequence": sequence, 
+    #     "JobID": jobid
+    # }
+
+
     args,body = recv(event)
     sequence = args['Sequence']
     accession = args['Genome']

@@ -56,30 +56,9 @@ class CracklingStack(Stack):
                 )
             },
             nat_gateways=2,
-            # subnet_configuration=[ 
-            #     ec2_.SubnetConfiguration(
-            #         name=f"Crackling{version}-PrivateSubnet",
-            #         subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED,
-            #         cidr_mask=20
-            #     ),
-            #     ec2_.SubnetConfiguration(
-            #         name=f"Crackling{version}-PublicSubnet",
-            #         subnet_type=ec2_.SubnetType.PUBLIC,
-            #         cidr_mask=20,
-            #         map_public_ip_on_launch=True
-            #     ),
-            # ],
             availability_zones=["ap-southeast-2a"]
         )
 
-        ## VPC Subnet 
-        # # Create a public subnet for internet facing operations
-        # publicSubnet = ec2_.Subnet(self, f"CracklingPublicSubnet{version}",
-        #     vpc_id=cracklingVpc.vpc_id,
-        #     availability_zone=availabilityZone,
-        #     cidr_block = availabilityZoneCIDR
-        # )
-        
         ## VPC Security Group
         # Allow certain access in/out of the VPC's internet gateway
         vpcAllAccess = ec2_.SecurityGroup(
@@ -115,39 +94,6 @@ class CracklingStack(Stack):
             allocation_id=publicElasticIPSchedulder.attr_allocation_id,
             network_interface_id=schedulerENI.attr_id
         )
-
-        # ## Add Public Elastic IP (EIP)
-        # # We need a public EIP in order for a lambda to communicate outside of the VPC without using a NAT.
-        # #  This address is assigned after lambda creation
-        # # Create EIP
-        # publicElasticIP = ec2_.CfnEIP(
-        #     self,
-        #     "CracklingPublicEIP{version}"
-        # )
-
-        # downloaderInterface = ec2_.CfnNetworkInterface(
-        #     self,
-        #     f"Crackling{version}-downloaderInterface",
-        #     subnet_id=cracklingVpc.public_subnets[0].subnet_id,
-        #     group_set=[vpcAllAccess.security_group_id]
-        # )
-        
-        # ec2_.CfnEIPAssociation(
-        #     self,
-        #     f"CracklingPublicEIPAssociation{version}",
-        #     eip=publicElasticIP.ref,
-        #     instance_id=downloaderInterface.attr_id  # Associate with the VPC (replace with the appropriate resource ID)
-        # )
-
-
-
-        # # Associate with VPC
-        # ec2_.CfnEIPAssociation(
-        #     self,
-        #     f"CracklingPublicEIPAssociationScheduler{version}",
-        #     eip=publicElasticIPSchedulder.ref,
-        #     instance_id=schedulerENI.attr_id  # Associate with the VPC (replace with the appropriate resource ID)
-        # )
 
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
@@ -422,22 +368,6 @@ class CracklingStack(Stack):
             starting_position=lambda_.StartingPosition.LATEST
         )
 
-        ## Assign IP
-        
-
-
-
-        # lambdaSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
-        #     self,
-        #     "SchedulerNetorkInterfaceAttachment",
-        #     device_index="0",
-        #     # instance_id=getLambdaSubnetInterface(lambdaScheduler, publicSubnet).network_interface_id,
-        #     instance_id=schedulerENI.attr_id,
-        #     network_interface_id=schedulerENI.attr_id,
-        #     delete_on_termination=False
-        # )
-
-
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_8,
@@ -477,48 +407,6 @@ class CracklingStack(Stack):
         )
         s3Genome.grant_read_write(lambdaDownloader)   
         s3Log.grant_read_write(lambdaDownloader)
-
-
-        
-        ## Assign IP
-
-        # downloaderSchedulerIntAttach = ec2_.CfnNetworkInterfaceAttachment(
-        #     self,
-        #     "downloaderNetorkInterfaceAttachment",
-        #     device_index="0",
-        #     instance_id=publicElasticIP.attr_allocation_id,
-        #     network_interface_id=downloaderInterface.attr_id,
-        #     delete_on_termination=False
-        # )      
-
-        # # -> -> bt2
-        # lambdaBowtie2 = lambda_.Function(self, "bowtie2", 
-        #     runtime=lambda_.Runtime.PYTHON_3_8,
-        #     handler="lambda_function.lambda_handler",
-        #     insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-        #     code=lambda_.Code.from_asset("../modules/bowtie2"),
-        #     layers=[lambdaLayerBt2Lib, lambdaLayerBt2Bin, lambdaLayerCommonFuncs,lambdaLayerLib],
-        #     vpc=cracklingVpc,
-        #     #security_groups=[vpcAllAccess],
-        #     timeout= duration,
-        #     memory_size= 10240,
-        #     ephemeral_storage_size = cdk.Size.gibibytes(10),
-        #     environment={
-        #         'BUCKET' : s3Genome.bucket_name,
-        #         'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-        #         'LD_LIBRARY_PATH' : ld_library_path,
-        #         'PATH' : path,
-        #         'LOG_BUCKET': s3Log.bucket_name
-        #     }
-        # )
-        # s3Genome.grant_read_write(lambdaBowtie2)
-        # s3Log.grant_read_write(lambdaBowtie2)
-        # sqsBowtie2.grant_consume_messages(lambdaBowtie2)
-        # lambdaBowtie2.add_event_source_mapping(
-        #     "mapLdaSqsBowtie",
-        #     event_source_arn=sqsBowtie2.queue_arn,
-        #     batch_size=1
-        # )
 
         # -> -> issl_creation
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
@@ -812,15 +700,6 @@ class CracklingStack(Stack):
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
-# ## Helper functions
-# def getLambdaSubnetInterface(lambdaFunc, subnet):
-#     # find public network interface
-#     for interface in lambdaFunc.connections.network_interfaces:
-#         if interface.subnet.subnet_id == subnet.subnet_id:
-#             return interface
-    
-#     raise Exception(f"Lambda func does not have an interface in the provided subnet\nLambda:\n{lambdaFunc.to_string()}\nSubnet:\n{subnet.to_string()}")
-        
 
 app = cdk.App()
 CracklingStack(app, f"CracklingStack{version}")
