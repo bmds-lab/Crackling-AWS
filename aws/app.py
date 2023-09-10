@@ -242,7 +242,7 @@ class CracklingStack(Stack):
             layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
             vpc=cracklingVpc,
             # 
-            # #security_groups=[vpcAllAccess],# was this meant to be left commented
+            # was this meant to be left commented
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
@@ -259,12 +259,7 @@ class CracklingStack(Stack):
         duration = Duration.minutes(15)
         
         # -> SQS queues
-        sqsDownload = sqs_.Queue(self, "sqsDownload", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
-        )
-        # sqsBowtie2 = sqs_.Queue(self, "sqsBowtie2", 
+        # sqsDownload = sqs_.Queue(self, "sqsDownload", 
         #     receive_message_wait_time=Duration.seconds(1),
         #     visibility_timeout=duration,
         #     retention_period=duration
@@ -311,62 +306,62 @@ class CracklingStack(Stack):
             roles=[ec2role.role_name]
         )
 
-        # Lambda Scheduler
-        lambdaScheduler = lambda_.Function(self, "scheduler", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
-            handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            code=lambda_.Code.from_asset("../modules/scheduler"),
-            layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
-            vpc=cracklingVpc,
-            #vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC),
-            security_groups=[vpcAllAccess],
-            timeout= duration,
-            environment={
-                'QUEUE' : sqsDownload.queue_url,
-                'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-                "AMI": "ami-0a3394674772b58a3",
-                "INSTANCE_TYPE": "r5ad.2xlarge",
-                "EC2_ARN" : cfn_instance_profile.attr_arn,
-                "REGION" : "ap-southeast-2",
-                "EC2_CUTOFF" : str(650),
-                "LOG_BUCKET": s3Log.bucket_name
-            },
-            #allow_public_subnet=True
-        )
+        # # Lambda Scheduler
+        # lambdaScheduler = lambda_.Function(self, "scheduler", 
+        #     runtime=lambda_.Runtime.PYTHON_3_8,
+        #     handler="lambda_function.lambda_handler",
+        #     insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+        #     code=lambda_.Code.from_asset("../modules/scheduler"),
+        #     layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
+        #     vpc=cracklingVpc,
+        #     #vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC),
+        #     security_groups=[vpcAllAccess],
+        #     timeout= duration,
+        #     environment={
+        #         'QUEUE' : sqsDownload.queue_url,
+        #         'LD_LIBRARY_PATH' : ld_library_path,
+        #         'PATH' : path,
+        #         'BUCKET' : s3Genome.bucket_name,
+        #         'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+        #         "AMI": "ami-0a3394674772b58a3",
+        #         "INSTANCE_TYPE": "r5ad.2xlarge",
+        #         "EC2_ARN" : cfn_instance_profile.attr_arn,
+        #         "REGION" : "ap-southeast-2",
+        #         "EC2_CUTOFF" : str(650),
+        #         "LOG_BUCKET": s3Log.bucket_name
+        #     },
+        #     #allow_public_subnet=True
+        # )
         
        
-        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-            actions=["ec2:RunInstances"],
-            resources=["*"]
-        ))
-        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-            actions=["s3:*"],
-            resources=["*"]
-        ))
-        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-            actions=["iam:*"],
-            resources=["*"]
-        ))
-        lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-            actions=["logs:*"],
-            resources=["*"]
-        ))
+        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+        #     actions=["ec2:RunInstances"],
+        #     resources=["*"]
+        # ))
+        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+        #     actions=["s3:*"],
+        #     resources=["*"]
+        # ))
+        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+        #     actions=["iam:*"],
+        #     resources=["*"]
+        # ))
+        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
+        #     actions=["logs:*"],
+        #     resources=["*"]
+        # ))
         
                 
-        s3Genome.grant_read_write(lambdaScheduler)
-        s3Log.grant_read_write(lambdaScheduler)
-        ddbJobs.grant_stream_read(lambdaScheduler)
-        sqsDownload.grant_send_messages(lambdaScheduler)
-        lambdaScheduler.add_event_source_mapping(
-            "mapLdaSchedulerDdbJobs",
-            event_source_arn=ddbJobs.table_stream_arn,
-            retry_attempts=0,
-            starting_position=lambda_.StartingPosition.LATEST
-        )
+        # s3Genome.grant_read_write(lambdaScheduler)
+        # s3Log.grant_read_write(lambdaScheduler)
+        # ddbJobs.grant_stream_read(lambdaScheduler)
+        # sqsDownload.grant_send_messages(lambdaScheduler)
+        # lambdaScheduler.add_event_source_mapping(
+        #     "mapLdaSchedulerDdbJobs",
+        #     event_source_arn=ddbJobs.table_stream_arn,
+        #     retry_attempts=0,
+        #     starting_position=lambda_.StartingPosition.LATEST
+        # )
 
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
@@ -387,24 +382,27 @@ class CracklingStack(Stack):
                 'BUCKET' : s3Genome.bucket_name,
                 'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
-                # 'BT2_QUEUE' : sqsBowtie2.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
             },
-            # #allow_public_subnet=True
         )
         
         
         ddbJobs.grant_read_write_data(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
-        # sqsBowtie2.grant_send_messages(lambdaDownloader)
-        sqsDownload.grant_consume_messages(lambdaDownloader)
+        # sqsDownload.grant_consume_messages(lambdaDownloader)
         lambdaDownloader.add_event_source_mapping(
-            "mapLdaSqsDownload",
-            event_source_arn=sqsDownload.queue_arn,
-            batch_size=1
+            "mapLdaSchedulerDdbJobs",
+            event_source_arn=ddbJobs.table_stream_arn,
+            retry_attempts=0,
+            starting_position=lambda_.StartingPosition.LATEST
         )
+        # lambdaDownloader.add_event_source_mapping(
+        #     "mapLdaSqsDownload",
+        #     event_source_arn=sqsDownload.queue_arn,
+        #     batch_size=1
+        # )
         s3Genome.grant_read_write(lambdaDownloader)   
         s3Log.grant_read_write(lambdaDownloader)
 
@@ -416,8 +414,6 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/isslCreation"),
             layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
             vpc=cracklingVpc,
-            
-            # #security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -447,8 +443,6 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/s3Check"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            
-            # #security_groups=[vpcAllAccess],
             timeout= duration,
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
@@ -481,7 +475,6 @@ class CracklingStack(Stack):
             layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             
-            # #security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
@@ -516,8 +509,6 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
             vpc=cracklingVpc,
-            
-            # #security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
