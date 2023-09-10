@@ -39,10 +39,10 @@ def CalcIssl(targets, genome):
         fp.write("\n")
 
     # download from s3 based on accession
+    genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
     s3_log_client = boto3.client('s3')
     s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
     s3_bucket = os.environ['BUCKET']
-    genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
     
     _, issl_file = s3_files_to_tmp(s3_log_client,s3_bucket,genome,".issl")
 
