@@ -1,4 +1,4 @@
-import sys, re, os, shutil, zipfile, boto3
+import sys, re, os, shutil, zipfile, boto3, json
 
 from threading import Thread
 from time import time, time_ns
@@ -142,7 +142,7 @@ def lambda_handler(event, context):
     jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
     sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
     body ={ 
-        "Genome": genome, 
+        "Genome": accession, 
         "Sequence": sequence, 
         "JobID": jobid
     }
@@ -190,7 +190,7 @@ def lambda_handler(event, context):
     create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
-    sendSQS(ISSL_QUEUE,body)
+    sendSQS(ISSL_QUEUE,json.dumps(body))
     # BT2_QUEUE = os.getenv('BT2_QUEUE')
     # sendSQS(BT2_QUEUE,body)
         

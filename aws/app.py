@@ -201,19 +201,19 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
         
-        ### Layers required for downloader and assoc. layers, explained in ../layers/README.md
-        # This layer provides the bowtie2 "binaries"/script files
-        lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
-            code=lambda_.Code.from_asset("../layers/bt2Bin"),
-            removal_policy=RemovalPolicy.DESTROY,
-            compatible_architectures=[lambda_.Architecture.X86_64]
-        )
-        ### This layer provides an updated version of the libstdc++ library required for bowtie2
-        lambdaLayerBt2Lib = lambda_.LayerVersion(self, "bt2Lib",
-            code=lambda_.Code.from_asset("../layers/bt2Lib"),
-            removal_policy=RemovalPolicy.DESTROY,
-            compatible_architectures=[lambda_.Architecture.X86_64]
-        )
+        # ### Layers required for downloader and assoc. layers, explained in ../layers/README.md
+        # # This layer provides the bowtie2 "binaries"/script files
+        # lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
+        #     code=lambda_.Code.from_asset("../layers/bt2Bin"),
+        #     removal_policy=RemovalPolicy.DESTROY,
+        #     compatible_architectures=[lambda_.Architecture.X86_64]
+        # )
+        # ### This layer provides an updated version of the libstdc++ library required for bowtie2
+        # lambdaLayerBt2Lib = lambda_.LayerVersion(self, "bt2Lib",
+        #     code=lambda_.Code.from_asset("../layers/bt2Lib"),
+        #     removal_policy=RemovalPolicy.DESTROY,
+        #     compatible_architectures=[lambda_.Architecture.X86_64]
+        # )
         ### This layer contains a python module of commonly used functions across the lambdas
         lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
             code=lambda_.Code.from_asset("../layers/commonFuncs"),
@@ -227,6 +227,12 @@ class CracklingStack(Stack):
         ### Layer containing the python script and binary required for building issl indices
         lambdaLayerIsslCreation = lambda_.LayerVersion(self, "isslCreationLayer",
             code=lambda_.Code.from_asset("../layers/isslCreation"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
+
+        ### This layer contains a sklearn to be used with 
+        lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
+            code=lambda_.Code.from_asset("../layers/commonFuncs"),
             removal_policy=RemovalPolicy.DESTROY
         )
 
@@ -389,7 +395,7 @@ class CracklingStack(Stack):
         )
         
         
-        ddbJobs.grant_read_write_data(lambdaDownloader)
+        ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
         # sqsDownload.grant_consume_messages(lambdaDownloader)
         lambdaDownloader.add_event_source_mapping(
