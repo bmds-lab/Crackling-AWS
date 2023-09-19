@@ -15,15 +15,15 @@ s3_lock_attempts = 15
 lock_delay = 0.15
 
 # try to get mutex write lock, error after specified no. of attempts
-def s3_try_lock(s3_client,s3_bucket,key):
+def s3_try_lock(s3_client,s3_bucket,accession):
     count = 0
     while count<s3_lock_attempts:
         try:
-            s3_client.head_object(Bucket=s3_bucket, Key=key)
+            s3_client.head_object(Bucket=s3_bucket, Key=accession)
         except ClientError:
             s3_client.put_object(
                 Bucket=s3_bucket,
-                Key=key
+                Key=accession
             )
             return True
         count +=1
@@ -31,24 +31,24 @@ def s3_try_lock(s3_client,s3_bucket,key):
     raise RuntimeError("s3 csv file locked") 
 
 # delete s3 file
-def s3_delete(s3_client,bucket,key):
+def s3_delete(s3_client,bucket,accession):
     s3_client.delete_object(
         Bucket=bucket,
-        Key=key
+        Key=accession
     )
 
 # unlock s3 csv writing
-def s3_unlock(s3_client,s3_bucket,key):
-    s3_delete(s3_client,s3_bucket,key)
+def s3_unlock(s3_client,s3_bucket,accession):
+    s3_delete(s3_client,s3_bucket,accession)
 
 # Create .notif files for s3check module to use
-def s3_success(s3_client,s3_bucket,accession,key,body):
-    key = f'{key}.notif'
-    print(f"s3 success. Creating {key}.")
+def s3_success(s3_client,s3_bucket,accession,accession,body):
+    accession = f'{accession}.notif'
+    print(f"s3 success. Creating {accession}.")
     s3_client.put_object(
         Body=body.encode('ascii'),
         Bucket=s3_bucket,
-        Key=os.path.join(accession,key)
+        Key=os.path.join(accession,accession)
     )
 
 def get_tmp_dir(ec2=False):
@@ -236,3 +236,10 @@ def main(genome,sequence,jobid):
     print(context.get_remaining_time_in_millis())
 
     return event, context
+
+def get_genome(s3_client,s3_bucket,accession):
+    try:
+        file_content = s3_client.get_object(Bucket=s3_bucket, Key=accession)["Body"].read()
+        return file_content
+    except ClientError:
+        return ""

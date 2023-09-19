@@ -24,14 +24,14 @@ s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
 
 def clean_s3_folder(accession):
     try:
-        paginator = s3_log_client.get_paginator("list_objects_v2")
+        paginator = s3_genome_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
             PaginationConfig={"PageSize": 1000})
         for page in response:
             files = page.get("Contents")
             for filename in files:
                 print(filename)
-                s3_log_client.delete_object(
+                s3_genome_client.delete_object(
                     Bucket=s3_bucket,
                     Key=filename
                 )
@@ -40,6 +40,21 @@ def clean_s3_folder(accession):
         print("verified clean-up of s3 folder after download failure")
     except Exception as e:
         print(f"{type(e)}: {e}")
+
+def check_s3(accession):
+    try:
+        paginator = s3_genome_client.get_paginator("list_objects_v2")
+        response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
+        print(response)
+        if len(response > 1):
+            print(f"{accession} already exists in s3")
+            return True
+        else:
+            print(f"{accession} does not exist in s3")
+            return False
+    except Exception as e:
+        print(f"{type(e)}: {e}")
+        return False
 
 #download accession data and put it in correct directory
 def dl_accession(accession):
@@ -167,9 +182,19 @@ def lambda_handler(event, context):
     thread1.daemon = True
     thread1.start()
 
-    # Download accession
-    tmp_dir, chr_fns,time = dl_accession(accession)
-    
+    #check if genome already exists in s3
+    if check_s3(accession):
+        # Genome exists, trigger target scan
+        TARGET_SCAN_QUEUE = os.environ['BUCKET']
+        #get genome data and send it to target scan queue
+        msg = get_genome(s3_genome_client,s3_bucket,accession).decode("utf-8")
+        sendSQS(TARGET_SCAN_QUEUE,msg) 
+        print("All Done... Terminating Program.")
+        return
+    else:
+        # Download accession
+        tmp_dir, chr_fns,time = dl_accession(accession)
+
     # if download fails update string for csv
     if 'fail' in tmp_dir:
         time = tmp_dir

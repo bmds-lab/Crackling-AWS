@@ -230,12 +230,6 @@ class CracklingStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        ### This layer contains a sklearn to be used with 
-        lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
-            code=lambda_.Code.from_asset("../layers/commonFuncs"),
-            removal_policy=RemovalPolicy.DESTROY
-        )
-
         ### Lambda function that acts as the entry point to the application.
         # This function creates a record in the DynamoDB jobs table.
         # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
@@ -388,6 +382,7 @@ class CracklingStack(Stack):
                 'BUCKET' : s3Genome.bucket_name,
                 'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
+                'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -397,6 +392,7 @@ class CracklingStack(Stack):
         
         ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
+        sqsTargetScan.grant_send_messages(lambdaDownloader)
         # sqsDownload.grant_consume_messages(lambdaDownloader)
         lambdaDownloader.add_event_source_mapping(
             "mapLdaSchedulerDdbJobs",
