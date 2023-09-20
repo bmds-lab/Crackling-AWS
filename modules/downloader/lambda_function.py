@@ -45,13 +45,15 @@ def check_s3(accession):
     try:
         paginator = s3_genome_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
-        print(response)
-        if len(response > 1):
-            print(f"{accession} already exists in s3")
-            return True
-        else:
-            print(f"{accession} does not exist in s3")
-            return False
+        
+        for page in response:
+            files = page.get("Contents")
+            if len(files) > 0:
+                print(f"{accession} exists in s3")
+                return True
+            else:
+                print(f"{accession} does not exist in s3")
+                return False
     except Exception as e:
         print(f"{type(e)}: {e}")
         return False
@@ -112,7 +114,7 @@ def dl_accession(accession):
                     tmp_name = f'{tmp_dir}/{name}.fa'
                     chr_fns.append(tmp_name)
                     #upload to s3
-                    s3_log_client.upload_fileobj(to_extract, s3_bucket, s3_name)
+                    s3_genome_client.upload_fileobj(to_extract, s3_bucket, s3_name)
                     to_extract.close()
                     #write file to tmp dir
                     if (__name__== "__main__") or ec2:
@@ -152,6 +154,9 @@ def sum_filesize(accession):
 
 
 def lambda_handler(event, context):
+    
+    print(event)
+    
     # DynamoDB data rec code
     accession = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
     jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]

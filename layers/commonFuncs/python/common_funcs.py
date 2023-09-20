@@ -42,7 +42,7 @@ def s3_unlock(s3_client,s3_bucket,accession):
     s3_delete(s3_client,s3_bucket,accession)
 
 # Create .notif files for s3check module to use
-def s3_success(s3_client,s3_bucket,accession,accession,body):
+def s3_success(s3_client,s3_bucket,accession,body):
     accession = f'{accession}.notif'
     print(f"s3 success. Creating {accession}.")
     s3_client.put_object(

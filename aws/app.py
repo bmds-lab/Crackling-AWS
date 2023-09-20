@@ -29,7 +29,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-1-v2"
+version = "-Dev-1-v2-DoNotDestroyWithoutGettingCodeOutOfLambdas"
 # availabilityZone = "ap-southeast-2a"
 # availabilityZoneCIDR = "10.0.0.0/20"
 
@@ -389,7 +389,6 @@ class CracklingStack(Stack):
             },
         )
         
-        
         ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
         sqsTargetScan.grant_send_messages(lambdaDownloader)
@@ -463,7 +462,7 @@ class CracklingStack(Stack):
         s3Genome.add_object_created_notification(
            notification, s3_.NotificationKeyFilter(suffix='.notif'))
         sqsTargetScan.grant_send_messages(lambdaS3Check)
-
+        
         ### Lambda function that scans a sequence for CRISPR sites.
         # This function is triggered when a record is written to the DynamoDB jobs table.
         # It creates one record per guide in the DynamoDB guides table.
