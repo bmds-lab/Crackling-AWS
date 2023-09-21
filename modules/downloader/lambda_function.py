@@ -43,7 +43,7 @@ def clean_s3_folder(accession):
 
 def check_s3(accession):
     try:
-        paginator = s3_genome_client.get_paginator("list_objects_v2")
+        paginator = s3_log_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
         
         for page in response:
@@ -190,10 +190,10 @@ def lambda_handler(event, context):
     #check if genome already exists in s3
     if check_s3(accession):
         # Genome exists, trigger target scan
-        TARGET_SCAN_QUEUE = os.environ['BUCKET']
+        TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
         #get genome data and send it to target scan queue
-        msg = get_genome(s3_genome_client,s3_bucket,accession).decode("utf-8")
-        sendSQS(TARGET_SCAN_QUEUE,msg) 
+        
+        sendSQS(TARGET_SCAN_QUEUE,json.dumps(body)) 
         print("All Done... Terminating Program.")
         return
     else:
