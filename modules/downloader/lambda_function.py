@@ -1,4 +1,4 @@
-import sys, re, os, shutil, zipfile, boto3
+import sys, re, os, shutil, zipfile, boto3, json
 
 from threading import Thread
 from time import time, time_ns
@@ -137,10 +137,22 @@ def sum_filesize(accession):
 
 
 def lambda_handler(event, context):
-    args,body = recv(event)
-    sequence = args['Sequence']
-    accession = args['Genome']
-    jobid = args['JobID']
+    # DynamoDB data rec code
+    accession = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
+    jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
+    sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
+    body ={ 
+        "Genome": genome, 
+        "Sequence": sequence, 
+        "JobID": jobid
+    }
+    json_object = json.dumps(body)
+
+    # old sqs data code
+    # args,body = recv(event)
+    # sequence = args['Sequence']
+    # accession = args['Genome']
+    # jobid = args['JobID']
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
@@ -179,7 +191,7 @@ def lambda_handler(event, context):
     create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
-    sendSQS(ISSL_QUEUE,body)
+    sendSQS(ISSL_QUEUE, json_object)
     # BT2_QUEUE = os.getenv('BT2_QUEUE')
     # sendSQS(BT2_QUEUE,body)
         

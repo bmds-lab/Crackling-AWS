@@ -1,10 +1,5 @@
-import json
-import boto3
-import os,re
-import shutil
+import json, boto3, os, re, shutil, tempfile
 from time import time_ns
-from subprocess import call
-import tempfile
 
 from common_funcs import *
 
@@ -12,39 +7,58 @@ shutil.copy("/opt/isslScoreOfftargets", "/tmp/isslScoreOfftargets")
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
+#environment variables for aws service endpoints
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
+genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
+s3_bucket = os.environ['BUCKET']
 s3_log_bucket = os.environ['LOG_BUCKET']
 
+#boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
-
+s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
 s3_log_client = boto3.client('s3')
+
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
+
 
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
     call(*args, **kwargs)
     
+def store_log(context, genome, jobId):
+    #log name based on request_id, a unique identifier
+    output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
+    #store lambda id for future logging
+    create_log(s3_log_client, s3_log_bucket, context, genome, jobId, output)
+
+
+def efs_genome_dir(genome, suffix):
+    dir = ""
+    #open efs
+
+    #search efs
+
+    #return directory from efs
+    return dir
+
+
 def CalcIssl(targets, genome):
     tmpToScore = tempfile.NamedTemporaryFile('w', delete=False)
     tmpScored = tempfile.NamedTemporaryFile('w', delete=False)
 
-    # write the candidate guides to file
+    # Create tempfile that consists of each target guide sequence for a specific genome
     with open(tmpToScore.name, 'w+') as fp:
         fp.write("\n".join([targets[x]['Seq20'] for x in targets]))
         fp.write("\n")
 
-    # download from s3 based on accession
-    genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
-    s3_log_client = boto3.client('s3')
-    s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
-    s3_bucket = os.environ['BUCKET']
-    
-    _, issl_file = s3_files_to_tmp(s3_log_client,s3_bucket,genome,".issl")
+    # Extract directory from Elastic File Storage (EFS) where the specific genome matches an .issl file
+    #_, issl_file = s3_files_to_tmp(s3_genome_client,s3_bucket,genome,".issl")
+    issl_file = efs_genome_dir(genome, ".issl")
 
     # call the scoring method
     caller(
@@ -59,6 +73,7 @@ def CalcIssl(targets, genome):
         shell = True
     )
 
+    # Extract the score in scored temp file and insert into dictionary structure to be returned
     with open(tmpScored.name, 'r') as fp:
         for targetScored in [x.split('\t') for x in fp.readlines()]:
             if len(targetScored) == 2:
@@ -84,12 +99,7 @@ def lambda_handler(event, context):
     
     print(event)
     
-    # SNS only pushes one message at time, so this for-loop is useless
-    # tho still worthwhile in preparation for an architecture that can send
-    # messages in batches (for example, via a DynamoDB stream)
-    # but I'm out of time to finish that implemetation (there is a commit
-    # in the repo where this is implemented, but functioning incorrectly [stuck
-    # in a invocation loop])
+    # Create dictionary mapping jobid to genome for all messages in SQS batch
     for record in event['Records']:
         try:
             message = json.loads(record['body'])
@@ -102,25 +112,9 @@ def lambda_handler(event, context):
             print(f'Missing core data to perform off-target scoring: {message}')
             continue
             
-        # Transform the nested dict structure from Boto3 into something more
-        # ideal, imo.
-        # This is only needed if the payload is passed from a Lambda function.
-        # SNS gives it to us in the "ideal" format already.
-        # e.g. {
-        #   'Count': {'N': '1'}, 
-        #   'Sequence': {'S': 'ATCGATCGATCGATCGATCGAGG'}, 
-        #   'JobID': {'S': '28653200-2afb-4d19-8369-545ff606f6f1'}, 
-        #   'TargetID': {'N': '0'}
-        # }
-        #t = {'S' : str, 'N' : int} # transforms
-        #f = {'Count' : 'N', 'Sequence' : 'S', 'JobID' : 'S', 'TargetID' : 'N'} # fields
-        #temp = {k : t[f[k]](message[k][f[k]]) for k in f}
-        #message = temp
- 
         jobId = message['JobID']
-            
+
         if jobId not in jobToGenomeMap:
-            #print(f"JobID {jobId} not in job-to-genome map.")
             # Fetch the job information so it is known which genome to use
             result = dynamodb_client.get_item(
                 TableName = jobs_table_name,
@@ -128,31 +122,26 @@ def lambda_handler(event, context):
                     'JobID' : {'S' : jobId}
                 }
             )
-            
-            
-            
+            # Extract genome from fetched result
             if 'Item' in result:
                 genome = result['Item']['Genome']['S']
-                
                 jobToGenomeMap[jobId] = genome
                 targetsToScorePerGenome[genome] = {}
-                
                 print(jobId, genome)
 
-                #METRIC  CODE
-                
-                #log name based on request_id, a unique identifier
-                output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
-                #store lambda id for future logging
-                create_log(s3_log_client, s3_log_bucket, context, genome, jobId, output)
-                
+                # Benchmark code
+                store_log(context, genome, jobId)
+            
+            # Error - Empty fetched result from dynamodb
             else:
                 print(f'No matching JobID: {jobId}???')
                 ReceiptHandles.append(record['receiptHandle'])
                 continue
 
-        # key: genome, value: list of guides
+        # Extract target guide sequence (21-length long)
         seq20 = message['Sequence'][0:20]
+
+        # Map guide sequences to genome and prepare dictionary structure for scoring in next iteration
         targetsToScorePerGenome[jobToGenomeMap[jobId]][seq20] = {
             'JobID'     : jobId,
             'TargetID'  : message['TargetID'],
@@ -160,11 +149,11 @@ def lambda_handler(event, context):
             'Seq20'     : seq20,
             'Score'     : None,
         }
-        
+        # Keep track of messages in batch for removal at later stage
         ReceiptHandles.append(record['receiptHandle'])
-
     #print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
     
+    # Next iteration - for each genome, score its target sequences
     for genome in targetsToScorePerGenome:
         # key: genome, value: list of dict
         targetsScored = CalcIssl(targetsToScorePerGenome[genome], genome)
