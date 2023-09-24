@@ -15,7 +15,7 @@ table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
 
 # Create S3 client
-s3_log_client = boto3.client('s3')
+s3_client = boto3.client('s3')
 
 # Function that returns the reverse-complement of a given sequence
 complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
@@ -143,7 +143,7 @@ def lambda_handler(event, context):
     sequence = params['Sequence']
     jobid = params['JobID']
     
-    create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
+    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
     
     find_targets(params) 
         #print('Processed INSERT event for {}.'.format(jobid))

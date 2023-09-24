@@ -21,7 +21,7 @@ dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
 
-s3_log_client = boto3.client('s3')
+s3_client = boto3.client('s3')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
 
@@ -39,12 +39,11 @@ def CalcIssl(targets, genome):
         fp.write("\n")
 
     # download from s3 based on accession
-    genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
-    s3_log_client = boto3.client('s3')
-    s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
+        s3_client = boto3.client('s3')
+    
     s3_bucket = os.environ['BUCKET']
     
-    _, issl_file = s3_files_to_tmp(s3_log_client,s3_bucket,genome,".issl")
+    _, issl_file = s3_files_to_tmp(s3_client,s3_bucket,genome,".issl")
 
     # call the scoring method
     caller(
@@ -144,7 +143,7 @@ def lambda_handler(event, context):
                 #log name based on request_id, a unique identifier
                 output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
                 #store lambda id for future logging
-                create_log(s3_log_client, s3_log_bucket, context, genome, jobId, output)
+                create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
                 
             else:
                 print(f'No matching JobID: {jobId}???')

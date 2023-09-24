@@ -13,25 +13,22 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
 s3_log_bucket = os.environ['LOG_BUCKET']
-ec2 = False
 starttime = time_ns()
 
 # Create S3 client
-s3_log_client = boto3.client('s3')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
+s3_client = boto3.client('s3')
 
 def clean_s3_folder(accession):
     try:
-        paginator = s3_genome_client.get_paginator("list_objects_v2")
+        paginator = s3_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
             PaginationConfig={"PageSize": 1000})
         for page in response:
             files = page.get("Contents")
             for filename in files:
                 print(filename)
-                s3_genome_client.delete_object(
+                s3_client.delete_object(
                     Bucket=s3_bucket,
                     Key=filename
                 )
@@ -43,7 +40,7 @@ def clean_s3_folder(accession):
 
 def check_s3(accession):
     try:
-        paginator = s3_log_client.get_paginator("list_objects_v2")
+        paginator = s3_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
         
         for page in response:
@@ -60,7 +57,7 @@ def check_s3(accession):
 
 #download accession data and put it in correct directory
 def dl_accession(accession):
-    tmp_dir = get_tmp_dir(ec2)
+    tmp_dir = get_tmp_dir()
     filesize_count = 0
     
     time_1 = time()
@@ -76,7 +73,7 @@ def dl_accession(accession):
         _preload_content = False )
 
     #Save Zip File
-    zip_file = get_named_tmp_file(ec2)
+    zip_file = get_named_tmp_file()
     print(zip_file.name)
 
     # Download zip file
@@ -114,10 +111,10 @@ def dl_accession(accession):
                     tmp_name = f'{tmp_dir}/{name}.fa'
                     chr_fns.append(tmp_name)
                     #upload to s3
-                    s3_genome_client.upload_fileobj(to_extract, s3_bucket, s3_name)
+                    s3_client.upload_fileobj(to_extract, s3_bucket, s3_name)
                     to_extract.close()
                     #write file to tmp dir
-                    if (__name__== "__main__") or ec2:
+                    if (__name__== "__main__"):
                         to_extract = zip_ref.open(file_in_zip)
                         f = open(tmp_name,'wb')
                         f.write(to_extract.read())
@@ -183,7 +180,7 @@ def lambda_handler(event, context):
     lock_key = 'lock_key'
 
     # Create new threads
-    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_log_client,s3_bucket,csv_fn,lock_key))
+    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
     thread1.daemon = True
     thread1.start()
 
@@ -205,19 +202,15 @@ def lambda_handler(event, context):
         time = tmp_dir
     
     # Add run to s3 csv for logging
-    s3_csv_append(s3_log_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
+    s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
     #close temp fasta file directory
-    if not ec2 and os.path.exists(tmp_dir):
+    if os.path.exists(tmp_dir):
         print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 
-    # if running on ec2, return early with tmp directory
-    if ec2:
-        print("All Done... Terminating Program.")
-        return tmp_dir
     
-    create_log(s3_log_client, s3_log_bucket, context, accession, jobid, 'Downloader')
+    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
     sendSQS(ISSL_QUEUE,json.dumps(body))
@@ -226,13 +219,6 @@ def lambda_handler(event, context):
         
     print("All Done... Terminating Program.")
 
-# ec2 instance code entry and setup function
-def ec2_start(s3_Client, event, context):
-    global s3_log_client
-    s3_log_client = s3_Client
-    global ec2
-    ec2 = True
-    return lambda_handler(event, context)
 
 if __name__== "__main__":
     event, context = main()

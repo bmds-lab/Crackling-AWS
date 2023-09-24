@@ -9,16 +9,13 @@ except ImportError:
 
 AMI = os.environ['AMI']
 BUCKET = os.environ['BUCKET']
-genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
 INSTANCE_TYPE = os.environ['INSTANCE_TYPE']
 REGION = os.environ['REGION']
 QUEUE = os.environ['QUEUE']
-EC2_ARN = os.environ['EC2_ARN']
-EC2_CUTOFF = int(os.environ['EC2_CUTOFF'])
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-s3_log_client = boto3.client('s3')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
+s3_client = boto3.client('s3')
+
 
 def SpawnLambda(dictionary):
     print("Spinning up lambdas for download, bowtie & isslCreation")
@@ -26,40 +23,6 @@ def SpawnLambda(dictionary):
     print(json_object)
     sendSQS(QUEUE,json_object)
 
-def SpawnEC2(genome,jobid,sequence):
-    print("Spinning up EC2 for download, bowtie & isslCreation")
-    ec2 = boto3.client('ec2', region_name=REGION)
-
-    init_script = f"""#!/bin/bash
-    sudo mkfs -t xfs /dev/nvme1n1
-    sudo mkdir /tmp2
-    sudo mount /dev/nvme1n1 /tmp2
-    sudo cp -R /tmp/* /tmp2
-    sudo umount /tmp2
-    sudo mount /dev/nvme1n1 /tmp
-    sudo chmod 777 /tmp
-    export BUCKET="{BUCKET}"
-    source /ec2Code/.venv/bin/activate
-    python /ec2Code/ec2_ncbi.py {genome} {sequence} {jobid} || shutdown -h -t 30
-    shutdown -h -t 30
-                """
-    
-    # create ec2 for when accession will take too long to download
-    instance = ec2.run_instances( 
-        ImageId=AMI,
-        InstanceType=INSTANCE_TYPE,
-        MaxCount=1,
-        MinCount=1,
-        InstanceInitiatedShutdownBehavior='terminate', 
-        UserData=init_script,
-        IamInstanceProfile={
-            'Arn': EC2_ARN  
-        }   
-    )
-    instance_id = instance['Instances'][0]['InstanceId']
-    response = ec2.monitor_instances(InstanceIds=[instance_id])
-    print(f"instance_id: {instance_id}")
-    print(f"EC2 Monitoring response: {response}")
 
 def get_fna_size_accessions(genome):
     api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
@@ -94,7 +57,6 @@ def lambda_handler(event, context):
     genome = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
     jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
     sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
-    print("EC2_CUTOFF",EC2_CUTOFF)
     dictionary ={ 
         "Genome": genome, 
         "Sequence": sequence, 
@@ -104,21 +66,16 @@ def lambda_handler(event, context):
     # get genome file size
     metaDataFile, ChromosomeLength = get_fna_size_accessions(genome)
 
-    # add code to spawn either ec2 or lambda function based on 
     # genome file size
     if metaDataFile > 0: 
         metaDataFile = metaDataFile / 1048576
-        if (metaDataFile == 0) or (metaDataFile > EC2_CUTOFF):
-            SpawnEC2(genome,jobid,sequence)
-        else:
-            SpawnLambda(dictionary)
-            #Store lambda id for logging purposes
-            create_log(s3_log_client, s3_log_bucket, context, genome, jobid, 'Scheduler')
+
+        SpawnLambda(dictionary)
+        #Store lambda id for logging purposes
+        create_log(s3_client, s3_log_bucket, context, genome, jobid, 'Scheduler')
     else:
         ChromosomeLength = ChromosomeLength / 1048576
-        if (ChromosomeLength == 0) or (ChromosomeLength > EC2_CUTOFF):
-            SpawnEC2(genome,jobid,sequence)
-        else:
-            SpawnLambda(dictionary)
-            #Store lambda id for logging purposes
-            create_log(s3_log_client, s3_log_bucket, context, genome, jobid, 'Scheduler')
+       
+        SpawnLambda(dictionary)
+        #Store lambda id for logging purposes
+        create_log(s3_client, s3_log_bucket, context, genome, jobid, 'Scheduler')

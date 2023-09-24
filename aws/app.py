@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# GCF_000909495.1
 """
 Crackling-cloud AWS
 
@@ -11,6 +10,7 @@ The standalone edition of the Crackling pipeline is available at https://github.
 
 """
 import aws_cdk as cdk
+import json
 
 from aws_cdk import (
     Duration,
@@ -29,7 +29,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-1-v2-DoNotDestroyWithoutGettingCodeOutOfLambdas"
+version = "-Dev-1-v3"
 # availabilityZone = "ap-southeast-2a"
 # availabilityZoneCIDR = "10.0.0.0/20"
 
@@ -55,46 +55,9 @@ class CracklingStack(Stack):
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
             },
-            nat_gateways=2,
+            nat_gateways=1,
             availability_zones=["ap-southeast-2a"]
         )
-
-        ## VPC Security Group
-        # Allow certain access in/out of the VPC's internet gateway
-        vpcAllAccess = ec2_.SecurityGroup(
-            self,
-            "All Access In/Out",
-            vpc=cracklingVpc,
-            description="Allow all In/Out Access to Crackling VPC. This should be refined to specfic addresses in future",
-            allow_all_outbound=True,
-        )
-        vpcAllAccess.add_ingress_rule(
-            peer=ec2_.Peer.any_ipv4(),
-            connection=ec2_.Port.all_traffic()
-        )
-
-        
-        #below EIP will be removed with scheduler
-        publicElasticIPSchedulder = ec2_.CfnEIP(
-            self,
-            "CracklingPublicEIPScheduler{version}",
-            domain=cracklingVpc.vpc_id
-        )
-
-        schedulerENI = ec2_.CfnNetworkInterface(
-            self,
-            f"Crackling{version}-schedulerENI",
-            subnet_id=cracklingVpc.public_subnets[0].subnet_id, 
-            group_set=[vpcAllAccess.security_group_id]
-        )
-        ###  remove this  ^^^^^ or assign it to the lambda??
-        assoc = ec2_.CfnEIPAssociation(
-            self,
-            f"CracklingSchedulerPublicEIPAssociation{version}",
-            allocation_id=publicElasticIPSchedulder.attr_allocation_id,
-            network_interface_id=schedulerENI.attr_id
-        )
-
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
         # This bucket is used for hosting the front-end application.
@@ -125,6 +88,27 @@ class CracklingStack(Stack):
             auto_delete_objects = True
         )
 
+        # delegate permisions too access point
+        s3GenomeAccessPointPolicy = iam_.PolicyStatement.from_json({
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": "*",
+            "Resource": [
+               f"{s3Genome.bucket_arn}",
+                f"{s3Genome.bucket_arn}/*"
+            ],
+            "Condition": {
+                "StringEquals": {
+                    "s3:DataAccessPointAccount": "377188290550" #this is the account number
+                }
+            }
+        })
+
+        s3Genome.add_to_resource_policy(s3GenomeAccessPointPolicy)
+        
+
         # VPC access point for Genome storage
         s3GenomeAccess = s3_.CfnAccessPoint(
             scope=self,
@@ -132,8 +116,156 @@ class CracklingStack(Stack):
             id="s3GenomeAccess",
             vpc_configuration=s3_.CfnAccessPoint.VpcConfigurationProperty(
                 vpc_id=cracklingVpc.vpc_id
-            )
+            )#,
+            # policy={
+            #     "Version": "2012-10-17",
+            #     "Statement": [
+            #         {
+            #             "Effect": "Allow",
+            #             "Principal": {
+            #                 "AWS": "*"
+            #             },
+            #             "Action": "*",
+            #             "Resource": f"{s3Genome.bucket_arn}:accesspoint/*"
+            #         }
+            #     ]
+            # }
         )
+
+        lambdaS3AccessPointIAM = iam_.PolicyStatement.from_json({
+            "Effect": "Allow",
+            "Action": [
+                "s3:*"
+            ],
+            "Resource": [
+                f"{s3GenomeAccess.attr_arn}",
+                f"{s3GenomeAccess.attr_arn}/object/*"
+            ]
+        })#,
+                # {
+                #     "Effect": "Allow",
+                #     "Action": [
+                #         "logs:CreateLogGroup",
+                #         "logs:CreateLogStream",
+                #         "logs:PutLogEvents"
+                #     ],
+                #     "Resource": "*"
+                # },
+                # {
+                #     "Version": "2012-10-17",
+                #     "Statement": [
+                #         {
+                #             "Effect": "Allow",
+                #             "Action": [
+                #                 "logs:CreateLogGroup",
+                #                 "logs:CreateLogStream",
+                #                 "logs:PutLogEvents",
+                #                 "ec2:CreateNetworkInterface",
+                #                 "ec2:DescribeNetworkInterfaces",
+                #                 "ec2:DeleteNetworkInterface",
+                #                 "ec2:AssignPrivateIpAddresses",
+                #                 "ec2:UnassignPrivateIpAddresses"
+                #             ],
+                #             "Resource": "*"
+                #         }
+                #     ]
+                # },
+                # {
+                #     "Version": "2012-10-17",
+                #     "Statement": [
+                #         {
+                #             "Effect": "Allow",
+                #             "Action": "logs:CreateLogGroup",
+                #             "Resource": "*"
+                #         },
+                #         {
+                #             "Effect": "Allow",
+                #             "Action": [
+                #                 "logs:CreateLogStream",
+                #                 "logs:PutLogEvents"
+                #             ],
+                #             "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda-insights:*"
+                #         }
+                #     ]
+                # },
+                # {
+                #     "Version": "2012-10-17",
+                #     "Statement": [
+                #         {
+                #             "Action": "dynamodb:ListStreams",
+                #             "Resource": "*",
+                #             "Effect": "Allow"
+                #         },
+                #         {
+                #             "Action": [
+                #                 "dynamodb:DescribeStream",
+                #                 "dynamodb:GetRecords",
+                #                 "dynamodb:GetShardIterator"
+                #             ],
+                #             "Resource": "arn:aws:dynamodb:ap-southeast-2:377188290550:table/CracklingStack-Dev-1-v2-ddbJobs55ECC89F-JST565WA3XMO/stream/2023-09-21T23:38:28.318",
+                #             "Effect": "Allow"
+                #         },
+                #         {
+                #             "Action": [
+                #                 "sqs:SendMessage",
+                #                 "sqs:GetQueueAttributes",
+                #                 "sqs:GetQueueUrl"
+                #             ],
+                #             "Resource": "arn:aws:sqs:ap-southeast-2:377188290550:CracklingStack-Dev-1-v2-sqsIsslCreation80855E89-acH6xG1nDJz3",
+                #             "Effect": "Allow"
+                #         },
+                #         {
+                #             "Action": [
+                #                 "sqs:SendMessage",
+                #                 "sqs:GetQueueAttributes",
+                #                 "sqs:GetQueueUrl"
+                #             ],
+                #             "Resource": "arn:aws:sqs:ap-southeast-2:377188290550:CracklingStack-Dev-1-v2-sqsTargetScan997A363C-Iu0Z68HjMN6X",
+                #             "Effect": "Allow"
+                #         },
+                #         {
+                #             "Action": [
+                #                 "s3:GetObject*",
+                #                 "s3:GetBucket*",
+                #                 "s3:List*",
+                #                 "s3:DeleteObject*",
+                #                 "s3:PutObject",
+                #                 "s3:PutObjectLegalHold",
+                #                 "s3:PutObjectRetention",
+                #                 "s3:PutObjectTagging",
+                #                 "s3:PutObjectVersionTagging",
+                #                 "s3:Abort*"
+                #             ],
+                #             "Resource": [
+                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-genomestorage3eda2834-n4sro0zskeb2",
+                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-genomestorage3eda2834-n4sro0zskeb2/*"
+                #             ],
+                #             "Effect": "Allow"
+                #         },
+                #         {
+                #             "Action": [
+                #                 "s3:GetObject*",
+                #                 "s3:GetBucket*",
+                #                 "s3:List*",
+                #                 "s3:DeleteObject*",
+                #                 "s3:PutObject",
+                #                 "s3:PutObjectLegalHold",
+                #                 "s3:PutObjectRetention",
+                #                 "s3:PutObjectTagging",
+                #                 "s3:PutObjectVersionTagging",
+                #                 "s3:Abort*"
+                #             ],
+                #             "Resource": [
+                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-logstoraged6ebd3eb-18l827jrmwu0e",
+                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-logstoraged6ebd3eb-18l827jrmwu0e/*"
+                #             ],
+                #             "Effect": "Allow"
+                #         }
+                #     ]
+                # }
+        #     ]
+        # })
+
 
         #New S3 Bucket for Log storage
         s3Log = s3_.Bucket(self, "logStorage")    
@@ -200,20 +332,7 @@ class CracklingStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
-        
-        # ### Layers required for downloader and assoc. layers, explained in ../layers/README.md
-        # # This layer provides the bowtie2 "binaries"/script files
-        # lambdaLayerBt2Bin = lambda_.LayerVersion(self, "bt2Bin",
-        #     code=lambda_.Code.from_asset("../layers/bt2Bin"),
-        #     removal_policy=RemovalPolicy.DESTROY,
-        #     compatible_architectures=[lambda_.Architecture.X86_64]
-        # )
-        # ### This layer provides an updated version of the libstdc++ library required for bowtie2
-        # lambdaLayerBt2Lib = lambda_.LayerVersion(self, "bt2Lib",
-        #     code=lambda_.Code.from_asset("../layers/bt2Lib"),
-        #     removal_policy=RemovalPolicy.DESTROY,
-        #     compatible_architectures=[lambda_.Architecture.X86_64]
-        # )
+      
         ### This layer contains a python module of commonly used functions across the lambdas
         lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
             code=lambda_.Code.from_asset("../layers/commonFuncs"),
@@ -259,11 +378,6 @@ class CracklingStack(Stack):
         duration = Duration.minutes(15)
         
         # -> SQS queues
-        # sqsDownload = sqs_.Queue(self, "sqsDownload", 
-        #     receive_message_wait_time=Duration.seconds(1),
-        #     visibility_timeout=duration,
-        #     retention_period=duration
-        # )
         sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
@@ -288,80 +402,6 @@ class CracklingStack(Stack):
             retention_period=duration
         )
 
-        # IAM role and surrounding instance profile for scheduler to create EC2 
-        # instance if genome is above "EC2_CUTOFF" threshold
-        ec2role = iam_.Role(self, "ec2role",
-            assumed_by=iam_.ServicePrincipal("ec2.amazonaws.com"),
-            description="Example role..."
-        )
-        ec2role.add_to_policy(iam_.PolicyStatement(
-            actions=["ec2:*"],
-            resources=["*"]
-        ))
-        ec2role.add_to_policy(iam_.PolicyStatement(
-            actions=["s3:*"],
-            resources=["*"]
-        ))
-        cfn_instance_profile = iam_.CfnInstanceProfile(self, "MyCfnInstanceProfile",
-            roles=[ec2role.role_name]
-        )
-
-        # # Lambda Scheduler
-        # lambdaScheduler = lambda_.Function(self, "scheduler", 
-        #     runtime=lambda_.Runtime.PYTHON_3_8,
-        #     handler="lambda_function.lambda_handler",
-        #     insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-        #     code=lambda_.Code.from_asset("../modules/scheduler"),
-        #     layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
-        #     vpc=cracklingVpc,
-        #     #vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC),
-        #     security_groups=[vpcAllAccess],
-        #     timeout= duration,
-        #     environment={
-        #         'QUEUE' : sqsDownload.queue_url,
-        #         'LD_LIBRARY_PATH' : ld_library_path,
-        #         'PATH' : path,
-        #         'BUCKET' : s3Genome.bucket_name,
-        #         'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
-        #         "AMI": "ami-0a3394674772b58a3",
-        #         "INSTANCE_TYPE": "r5ad.2xlarge",
-        #         "EC2_ARN" : cfn_instance_profile.attr_arn,
-        #         "REGION" : "ap-southeast-2",
-        #         "EC2_CUTOFF" : str(650),
-        #         "LOG_BUCKET": s3Log.bucket_name
-        #     },
-        #     #allow_public_subnet=True
-        # )
-        
-       
-        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-        #     actions=["ec2:RunInstances"],
-        #     resources=["*"]
-        # ))
-        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-        #     actions=["s3:*"],
-        #     resources=["*"]
-        # ))
-        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-        #     actions=["iam:*"],
-        #     resources=["*"]
-        # ))
-        # lambdaScheduler.role.add_to_principal_policy(iam_.PolicyStatement(
-        #     actions=["logs:*"],
-        #     resources=["*"]
-        # ))
-        
-                
-        # s3Genome.grant_read_write(lambdaScheduler)
-        # s3Log.grant_read_write(lambdaScheduler)
-        # ddbJobs.grant_stream_read(lambdaScheduler)
-        # sqsDownload.grant_send_messages(lambdaScheduler)
-        # lambdaScheduler.add_event_source_mapping(
-        #     "mapLdaSchedulerDdbJobs",
-        #     event_source_arn=ddbJobs.table_stream_arn,
-        #     retry_attempts=0,
-        #     starting_position=lambda_.StartingPosition.LATEST
-        # )
 
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
@@ -371,16 +411,13 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/downloader"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
-            #vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PUBLIC),
-            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+                'BUCKET' : s3GenomeAccess.attr_arn,
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
@@ -388,7 +425,6 @@ class CracklingStack(Stack):
                 'LOG_BUCKET': s3Log.bucket_name
             },
         )
-        
         ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
         sqsTargetScan.grant_send_messages(lambdaDownloader)
@@ -399,13 +435,10 @@ class CracklingStack(Stack):
             retry_attempts=0,
             starting_position=lambda_.StartingPosition.LATEST
         )
-        # lambdaDownloader.add_event_source_mapping(
-        #     "mapLdaSqsDownload",
-        #     event_source_arn=sqsDownload.queue_arn,
-        #     batch_size=1
-        # )
         s3Genome.grant_read_write(lambdaDownloader)   
         s3Log.grant_read_write(lambdaDownloader)
+        lambdaDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
+
 
         # -> -> issl_creation
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
@@ -419,8 +452,7 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+                'BUCKET' : s3GenomeAccess.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -435,6 +467,8 @@ class CracklingStack(Stack):
             event_source_arn=sqsIsslCreation.queue_arn,
             batch_size=1
         )
+        lambdaIsslCreation.add_to_role_policy(lambdaS3AccessPointIAM)
+
 
         # s3-triggered lambda to SQS to targetScan
         lambdaS3Check = lambda_.Function(self, "s3Check", 
@@ -448,6 +482,7 @@ class CracklingStack(Stack):
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
+                'BUCKET' : s3GenomeAccess.attr_arn,
                 'PATH' : path, 
                 'LOG_BUCKET': s3Log.bucket_name
             }
@@ -540,14 +575,11 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/issl"),
             layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            
-            security_groups=[vpcAllAccess],
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
-                'BUCKET' : s3Genome.bucket_name,
-                'GENOME_ACCESS_POINT_ARN' : f"s3://{s3GenomeAccess.attr_arn}",
+                'BUCKET' : s3GenomeAccess.attr_arn,
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
@@ -566,6 +598,7 @@ class CracklingStack(Stack):
         ddbTargets.grant_read_write_data(lambdaIssl)
         s3Genome.grant_read_write(lambdaIssl)
         s3Log.grant_read_write(lambdaIssl)
+        lambdaIssl.add_to_role_policy(lambdaS3AccessPointIAM)
 
         ### API
         # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
