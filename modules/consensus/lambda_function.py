@@ -8,7 +8,7 @@ import re
 import ast
 import time
 
-# from sklearn.svm import SVC
+from sklearn.svm import SVC
 from subprocess import call
 
 SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
@@ -27,7 +27,7 @@ consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
 sqs_client = boto3.client('sqs')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
-s3_log_client = boto3.client('s3')
+s3_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
@@ -38,7 +38,7 @@ def caller(*args, **kwargs):
     call(*args, **kwargs)
 
 # Put log object in to s3 bucket
-def create_log(s3_log_client, s3_log_bucket, context, genome, jobid, func_name):
+def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
     context_dict = {
         "log_group_name": context.log_group_name,
@@ -48,7 +48,7 @@ def create_log(s3_log_client, s3_log_bucket, context, genome, jobid, func_name):
     context_string = json.dumps(context_dict, default=str)
     
     #upload json context based on genome chosen and jobid
-    s3_log_client.put_object(
+    s3_client.put_object(
         Bucket = s3_log_bucket,
         Key = f'{genome}/jobs/{jobid}/{func_name}.json',
         Body = context_string
@@ -237,7 +237,7 @@ def lambda_handler(event, context):
         #log name based on request_id, a unique identifier
         output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
         #store lambda id for future logging
-        create_log(s3_log_client, s3_log_bucket, context, genome, "-", message['JobID'], output)
+        create_log(s3_client, s3_log_bucket, context, genome,message['JobID'], output)
     
         ReceiptHandles.append(record['receiptHandle'])
        

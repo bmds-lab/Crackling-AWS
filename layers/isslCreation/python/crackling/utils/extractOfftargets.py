@@ -145,41 +145,37 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
     
     # Open all the sorted files to merge
     printer(f'Beginning to merge sorted files, {maxNumOpenFiles:,} at a time')
-    if len(sortedFiles) == 1:
-        shutil.move(sortedFiles[0], fpOutput)
-    else:
-        while len(sortedFiles) > 1:
-            # A file to write the merged sequences to
-            mergedFile = tempfile.NamedTemporaryFile(delete = False)
-            
-            # Select the files to merge
-            while True:
-                try:
-                    sortedFilesPointers = [open(file, 'r') for file in sortedFiles[:maxNumOpenFiles]]
-                    break
-                except OSError as e:
-                    if e.errno == 24:
-                        printer(f'Attempted to open too many files at once (OSError errno 24)')
-                        maxNumOpenFiles = max(1, int(maxNumOpenFiles / 2))
-                        printer(f'Reducing the number of files that can be opened by half to {maxNumOpenFiles}')
-                        continue
-                    raise e
-                        
-            printer(f'Merging {len(sortedFilesPointers):,}')
-            
-            # Merge and write
-            with open(mergedFile.name, 'w') as f:
-                f.writelines(heapq.merge(*sortedFilesPointers))
-            
-            # Close all of the open files
-            for file in sortedFilesPointers:
-                file.close()
-            
-            # prepare for the next set to be merged
-            sortedFiles = sortedFiles[maxNumOpenFiles:] + [mergedFile.name]
-            
-            shutil.move(mergedFile.name, fpOutput)
+    while len(sortedFiles) > 1:
+        # A file to write the merged sequences to
+        mergedFile = tempfile.NamedTemporaryFile(delete = False)
+        
+        # Select the files to merge
+        while True:
+            try:
+                sortedFilesPointers = [open(file, 'r') for file in sortedFiles[:maxNumOpenFiles]]
+                break
+            except OSError as e:
+                if e.errno == 24:
+                    printer(f'Attempted to open too many files at once (OSError errno 24)')
+                    maxNumOpenFiles = max(1, int(maxNumOpenFiles / 2))
+                    printer(f'Reducing the number of files that can be opened by half to {maxNumOpenFiles}')
+                    continue
+                raise e
+                    
+        printer(f'Merging {len(sortedFilesPointers):,}')
+        
+        # Merge and write
+        with open(mergedFile.name, 'w') as f:
+            f.writelines(heapq.merge(*sortedFilesPointers))
+        
+        # Close all of the open files
+        for file in sortedFilesPointers:
+            file.close()
+          
+        # prepare for the next set to be merged
+        sortedFiles = sortedFiles[maxNumOpenFiles:] + [mergedFile.name]
     
+    shutil.move(mergedFile.name, fpOutput)
 
 def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
     printer('Extracting off-targets using sequental-processing approach')

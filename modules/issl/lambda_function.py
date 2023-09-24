@@ -7,20 +7,20 @@ shutil.copy("/opt/isslScoreOfftargets", "/tmp/isslScoreOfftargets")
 call(f"chmod -R 755 /tmp/isslScoreOfftargets".split(' '))
 BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 
+
 #environment variables for aws service endpoints
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
-genome_access_point_arn = os.environ['GENOME_ACCESS_POINT_ARN']
-s3_bucket = os.environ['BUCKET']
-s3_log_bucket = os.environ['LOG_BUCKET']
 
 #boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
-s3_genome_client = boto3.client('s3', endpoint_url=genome_access_point_arn)
-s3_log_client = boto3.client('s3')
+
+s3_bucket = os.environ['BUCKET']
+s3_log_bucket = os.environ['LOG_BUCKET']
+s3_client = boto3.client('s3')
 
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
@@ -34,7 +34,7 @@ def store_log(context, genome, jobId):
     #log name based on request_id, a unique identifier
     output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
     #store lambda id for future logging
-    create_log(s3_log_client, s3_log_bucket, context, genome, jobId, output)
+    create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
 
 
 def efs_genome_dir(genome, suffix):
@@ -133,6 +133,7 @@ def lambda_handler(event, context):
                 store_log(context, genome, jobId)
             
             # Error - Empty fetched result from dynamodb
+
             else:
                 print(f'No matching JobID: {jobId}???')
                 ReceiptHandles.append(record['receiptHandle'])
