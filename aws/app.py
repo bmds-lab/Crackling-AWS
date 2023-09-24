@@ -30,8 +30,6 @@ from aws_cdk import (
 
 
 version = "-Dev-1-v3"
-# availabilityZone = "ap-southeast-2a"
-# availabilityZoneCIDR = "10.0.0.0/20"
 
 
 class CracklingStack(Stack):
@@ -116,20 +114,7 @@ class CracklingStack(Stack):
             id="s3GenomeAccess",
             vpc_configuration=s3_.CfnAccessPoint.VpcConfigurationProperty(
                 vpc_id=cracklingVpc.vpc_id
-            )#,
-            # policy={
-            #     "Version": "2012-10-17",
-            #     "Statement": [
-            #         {
-            #             "Effect": "Allow",
-            #             "Principal": {
-            #                 "AWS": "*"
-            #             },
-            #             "Action": "*",
-            #             "Resource": f"{s3Genome.bucket_arn}:accesspoint/*"
-            #         }
-            #     ]
-            # }
+            )
         )
 
         lambdaS3AccessPointIAM = iam_.PolicyStatement.from_json({
@@ -141,131 +126,7 @@ class CracklingStack(Stack):
                 f"{s3GenomeAccess.attr_arn}",
                 f"{s3GenomeAccess.attr_arn}/object/*"
             ]
-        })#,
-                # {
-                #     "Effect": "Allow",
-                #     "Action": [
-                #         "logs:CreateLogGroup",
-                #         "logs:CreateLogStream",
-                #         "logs:PutLogEvents"
-                #     ],
-                #     "Resource": "*"
-                # },
-                # {
-                #     "Version": "2012-10-17",
-                #     "Statement": [
-                #         {
-                #             "Effect": "Allow",
-                #             "Action": [
-                #                 "logs:CreateLogGroup",
-                #                 "logs:CreateLogStream",
-                #                 "logs:PutLogEvents",
-                #                 "ec2:CreateNetworkInterface",
-                #                 "ec2:DescribeNetworkInterfaces",
-                #                 "ec2:DeleteNetworkInterface",
-                #                 "ec2:AssignPrivateIpAddresses",
-                #                 "ec2:UnassignPrivateIpAddresses"
-                #             ],
-                #             "Resource": "*"
-                #         }
-                #     ]
-                # },
-                # {
-                #     "Version": "2012-10-17",
-                #     "Statement": [
-                #         {
-                #             "Effect": "Allow",
-                #             "Action": "logs:CreateLogGroup",
-                #             "Resource": "*"
-                #         },
-                #         {
-                #             "Effect": "Allow",
-                #             "Action": [
-                #                 "logs:CreateLogStream",
-                #                 "logs:PutLogEvents"
-                #             ],
-                #             "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda-insights:*"
-                #         }
-                #     ]
-                # },
-                # {
-                #     "Version": "2012-10-17",
-                #     "Statement": [
-                #         {
-                #             "Action": "dynamodb:ListStreams",
-                #             "Resource": "*",
-                #             "Effect": "Allow"
-                #         },
-                #         {
-                #             "Action": [
-                #                 "dynamodb:DescribeStream",
-                #                 "dynamodb:GetRecords",
-                #                 "dynamodb:GetShardIterator"
-                #             ],
-                #             "Resource": "arn:aws:dynamodb:ap-southeast-2:377188290550:table/CracklingStack-Dev-1-v2-ddbJobs55ECC89F-JST565WA3XMO/stream/2023-09-21T23:38:28.318",
-                #             "Effect": "Allow"
-                #         },
-                #         {
-                #             "Action": [
-                #                 "sqs:SendMessage",
-                #                 "sqs:GetQueueAttributes",
-                #                 "sqs:GetQueueUrl"
-                #             ],
-                #             "Resource": "arn:aws:sqs:ap-southeast-2:377188290550:CracklingStack-Dev-1-v2-sqsIsslCreation80855E89-acH6xG1nDJz3",
-                #             "Effect": "Allow"
-                #         },
-                #         {
-                #             "Action": [
-                #                 "sqs:SendMessage",
-                #                 "sqs:GetQueueAttributes",
-                #                 "sqs:GetQueueUrl"
-                #             ],
-                #             "Resource": "arn:aws:sqs:ap-southeast-2:377188290550:CracklingStack-Dev-1-v2-sqsTargetScan997A363C-Iu0Z68HjMN6X",
-                #             "Effect": "Allow"
-                #         },
-                #         {
-                #             "Action": [
-                #                 "s3:GetObject*",
-                #                 "s3:GetBucket*",
-                #                 "s3:List*",
-                #                 "s3:DeleteObject*",
-                #                 "s3:PutObject",
-                #                 "s3:PutObjectLegalHold",
-                #                 "s3:PutObjectRetention",
-                #                 "s3:PutObjectTagging",
-                #                 "s3:PutObjectVersionTagging",
-                #                 "s3:Abort*"
-                #             ],
-                #             "Resource": [
-                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-genomestorage3eda2834-n4sro0zskeb2",
-                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-genomestorage3eda2834-n4sro0zskeb2/*"
-                #             ],
-                #             "Effect": "Allow"
-                #         },
-                #         {
-                #             "Action": [
-                #                 "s3:GetObject*",
-                #                 "s3:GetBucket*",
-                #                 "s3:List*",
-                #                 "s3:DeleteObject*",
-                #                 "s3:PutObject",
-                #                 "s3:PutObjectLegalHold",
-                #                 "s3:PutObjectRetention",
-                #                 "s3:PutObjectTagging",
-                #                 "s3:PutObjectVersionTagging",
-                #                 "s3:Abort*"
-                #             ],
-                #             "Resource": [
-                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-logstoraged6ebd3eb-18l827jrmwu0e",
-                #                 "arn:aws:s3:::cracklingstack-dev-1-v2-logstoraged6ebd3eb-18l827jrmwu0e/*"
-                #             ],
-                #             "Effect": "Allow"
-                #         }
-                #     ]
-                # }
-        #     ]
-        # })
-
+        })
 
         #New S3 Bucket for Log storage
         s3Log = s3_.Bucket(self, "logStorage")    
