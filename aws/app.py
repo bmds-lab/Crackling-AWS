@@ -22,6 +22,7 @@ from aws_cdk import (
     aws_sqs as sqs_,
     aws_dynamodb as ddb_,
     aws_iam as iam_,
+    aws_efs as efs_,
     aws_s3 as s3_,
     aws_s3_deployment as s3d_,
     aws_s3_notifications as s3_notify,
@@ -30,14 +31,14 @@ from aws_cdk import (
 
 
 version = "-Dev-1-v3"
+availabilityZone = "ap-southeast-2a"
 
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
-        
-
+       
         ### Virtual Private Cloud
         # VPCs are used for constraining infrastructure to a private network.
         cracklingVpc = ec2_.Vpc(
@@ -53,8 +54,10 @@ class CracklingStack(Stack):
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
             },
+          
             nat_gateways=1,
-            availability_zones=["ap-southeast-2a"]
+            availability_zones=[availabilityZone],
+            
         )
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
@@ -264,6 +267,25 @@ class CracklingStack(Stack):
         )
 
 
+        # Elastic File System Implementation
+        file_system = efs_.FileSystem(self, "EfsFileSystemService",
+            lifecycle_policy=efs_.LifecyclePolicy.AFTER_1_DAY, # file to infrequent access (IA) storage to reduce costs
+            performance_mode=efs_.PerformanceMode.GENERAL_PURPOSE,  # default
+            out_of_infrequent_access_policy=efs_.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS, #file back to default (non-IA) storage
+            vpc=cracklingVpc,
+            vpc_subnets = ec2_.SubnetSelection(availability_zones = [availabilityZone], one_per_az = True),
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        
+        # # Enforcing a user identity using an access point
+        efs_access_point = file_system.add_access_point(
+            "LambdaAccessPoint",
+            path = "/efs",
+            create_acl=efs_.Acl(owner_uid="1001", owner_gid="1001", permissions="777"),  #all can read/write/search
+            posix_user=efs_.PosixUser(uid="1001", gid="1001"),
+        )
+
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_8,
@@ -275,6 +297,9 @@ class CracklingStack(Stack):
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
@@ -286,12 +311,13 @@ class CracklingStack(Stack):
                 'LOG_BUCKET': s3Log.bucket_name
             },
         )
+
         ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
         sqsTargetScan.grant_send_messages(lambdaDownloader)
-        # sqsDownload.grant_consume_messages(lambdaDownloader)
+
         lambdaDownloader.add_event_source_mapping(
-            "mapLdaSchedulerDdbJobs",
+            "mapLdaDownloaderDdbJobs",
             event_source_arn=ddbJobs.table_stream_arn,
             retry_attempts=0,
             starting_position=lambda_.StartingPosition.LATEST
@@ -312,6 +338,9 @@ class CracklingStack(Stack):
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
@@ -340,6 +369,9 @@ class CracklingStack(Stack):
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
@@ -371,10 +403,12 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../modules/targetScan"),
             layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
@@ -409,6 +443,9 @@ class CracklingStack(Stack):
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
@@ -439,6 +476,9 @@ class CracklingStack(Stack):
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
+            filesystem=lambda_.FileSystem.from_efs_access_point(
+                ap=efs_access_point, mount_path="/mnt/efs"
+            ),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'TARGETS_TABLE' : ddbTargets.table_name,

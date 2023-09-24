@@ -163,12 +163,7 @@ def lambda_handler(event, context):
         "Sequence": sequence, 
         "JobID": jobid
     }
-
-    # old sqs data code
-    # args,body = recv(event)
-    # sequence = args['Sequence']
-    # accession = args['Genome']
-    # jobid = args['JobID']
+    json_object = json.dumps(body)
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
@@ -213,9 +208,7 @@ def lambda_handler(event, context):
     create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
     # send SQS messages to following two lambdas
     ISSL_QUEUE = os.getenv('ISSL_QUEUE')
-    sendSQS(ISSL_QUEUE,json.dumps(body))
-    # BT2_QUEUE = os.getenv('BT2_QUEUE')
-    # sendSQS(BT2_QUEUE,body)
+    sendSQS(ISSL_QUEUE, json_object)
         
     print("All Done... Terminating Program.")
 
