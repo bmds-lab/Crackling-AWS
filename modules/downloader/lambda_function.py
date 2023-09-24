@@ -14,11 +14,17 @@ except ImportError:
 # Global variables
 s3_bucket = os.environ['BUCKET']
 s3_log_bucket = os.environ['LOG_BUCKET']
-starttime = time_ns()
+#starttime = time_ns()
+TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
+ISSL_QUEUE = os.getenv('ISSL_QUEUE')
+LIST_PREFIXES = [".issl", ".offtargets"]
+EFS_MOUNT_PATH = os.environ['EFS_MOUNT_PATH']
 
 # Create S3 client
 s3_client = boto3.client('s3')
+s3_resource = boto3.resource('s3')
 
+#### HELPER FUNCTIONS
 def clean_s3_folder(accession):
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
@@ -38,11 +44,10 @@ def clean_s3_folder(accession):
     except Exception as e:
         print(f"{type(e)}: {e}")
 
-def check_s3(accession):
+def is_fasta_in_s3(accession):
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
         response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
-        
         for page in response:
             files = page.get("Contents")
             if len(files) > 0:
@@ -55,12 +60,36 @@ def check_s3(accession):
         print(f"{type(e)}: {e}")
         return False
 
-#download accession data and put it in correct directory
-def dl_accession(accession):
-    tmp_dir = get_tmp_dir()
-    filesize_count = 0
+def is_issl_in_efs(accession):
+    #prepare file_name for comparison
+    result = False
+    lambda_mapped_efs_dir = f"{EFS_MOUNT_PATH}/{accession}/issl"
+   
+    #get list of expected files
+    files_to_expect = []
+    for prefix in LIST_PREFIXES:
+        files_to_expect.append(accession+prefix)
+
+    #check files inside efs at specific genome directory
+    found_files = []
+    for _,_,f in os.walk(lambda_mapped_efs_dir):
+        found_files.append(f)
     
+    #compare existing files with expected files in efs
+    if found_files:
+        for file in found_files[0]:
+            if (file in files_to_expect):
+                result = True
+
+    return result
+
+
+# Function uses the ncbi api to download the accession data and it uploads it to AWS S3 bucket
+def dl_accession(accession):
+
     time_1 = time()
+    tmp_dir = get_tmp_dir()
+
     print(f'\nStarting download of {accession}.\nNote: can take a while to download. Please be patient!')
 
     # initalise API
@@ -101,25 +130,27 @@ def dl_accession(accession):
                 # f file has fasta file extension
                 if ".fna" in file_in_zip:
                     # open file_obj for file to extract file
-                    to_extract = zip_ref.open(file_in_zip)
+                    fasta_file = zip_ref.open(file_in_zip)
                     # Get file_name without ".fna" file extension
                     name = re.search(r'([^\/]+$)',file_in_zip).group(0)[:-4]
                     #Add directory structure to string name
-                    s3_name = f"{accession}/fasta/{name}.fa"
+                    s3_name = f"{accession}/fasta/{accession}.fa"
                     print(s3_name)
                     #save name to array
                     tmp_name = f'{tmp_dir}/{name}.fa'
                     chr_fns.append(tmp_name)
                     #upload to s3
-                    s3_client.upload_fileobj(to_extract, s3_bucket, s3_name)
-                    to_extract.close()
+                    s3_client.upload_fileobj(fasta_file, s3_bucket, s3_name)
+                    #wait until file is uploaded 
+                    s3_resource.Object(s3_bucket, s3_name).wait_until_exists()
+                    fasta_file.close()
                     #write file to tmp dir
-                    if (__name__== "__main__"):
-                        to_extract = zip_ref.open(file_in_zip)
-                        f = open(tmp_name,'wb')
-                        f.write(to_extract.read())
-                        f.close()
-                        to_extract.close()
+                    # if (__name__== "__main__"):
+                    #     fasta_file = zip_ref.open(file_in_zip)
+                    #     f = open(tmp_name,'wb')
+                    #     f.write(fasta_file.read())
+                    #     f.close()
+                    #     fasta_file.close()
             print(" Done.")
     except Exception as e:
         zip_file.close()
@@ -130,24 +161,7 @@ def dl_accession(accession):
     # Get rid of tmp file
     zip_file.close()
 
-    return tmp_dir, ','.join(chr_fns), time_2-time_1
-
-def sum_filesize(accession):    
-    assembly_accessions = accession.split() ## needs to be a full accession.version
-    
-    api_instance = ncbi.datasets.GenomeApi(ncbi.datasets.ApiClient())
-    genome_summary = api_instance.assembly_descriptors_by_accessions(assembly_accessions, page_size=1)
-
-    print(f"Number of assemblies: {genome_summary.total_count}")
-    
-    sum = 0
-    try:
-        for a in genome_summary.assemblies[0].assembly.chromosomes:
-            sum = sum + int(a.length)
-    except:
-        print("Genome is missing filesize data")
-    print(f" The sum of the chromosome length is {sum}")
-    return sum
+    return tmp_dir, ','.join(chr_fns)
 
 
 def lambda_handler(event, context):
@@ -168,48 +182,33 @@ def lambda_handler(event, context):
     if accession == 'fail':
         sys.exit('Error: No accession found.')
     
-    # Get file size for 
-    filesize = sum_filesize(accession)
-
-    csv_fn = 'times.csv'
-    lock_key = 'lock_key'
-
-    # Create new threads
-    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
-    thread1.daemon = True
-    thread1.start()
-
-    #check if genome already exists in s3
-    if check_s3(accession):
-        # Genome exists, trigger target scan
-        TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
-        #get genome data and send it to target scan queue
-        
-        sendSQS(TARGET_SCAN_QUEUE,json.dumps(body)) 
+    #Determine if the mounted EFS has the required issl file needed to skip ahead in pipeline
+    if is_issl_in_efs(accession):
+        print ("Issl file has already been generated. Moving to scoring process")
+        sendSQS(TARGET_SCAN_QUEUE, json_object) 
         print("All Done... Terminating Program.")
-        return
-    else:
-        # Download accession
-        tmp_dir, chr_fns,time = dl_accession(accession)
+        return 
 
-    # if download fails update string for csv
-    if 'fail' in tmp_dir:
-        time = tmp_dir
-    
-    # Add run to s3 csv for logging
-    s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
+    #Since issl file does not exist, check if a fasta file can be used to create the issl file
+    if not is_fasta_in_s3(accession):
+        tmp_dir, chr_fns = dl_accession(accession)
+        # if download fails update string for csv
+        #if 'fail' in tmp_dir:
+            #time = tmp_dir
+        # Add run to s3 csv for logging
+        #s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
 
-    #close temp fasta file directory
-    if os.path.exists(tmp_dir):
-        print("Cleaning Up...")
-        shutil.rmtree(tmp_dir)
+        #close temp fasta file directory
+        if os.path.exists(tmp_dir):
+            print("Cleaning Up...")
+            shutil.rmtree(tmp_dir)
+        
 
-    
-    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
-    # send SQS messages to following two lambdas
-    ISSL_QUEUE = os.getenv('ISSL_QUEUE')
+    # fasta file exists or has been created, moving to generating issl file
     sendSQS(ISSL_QUEUE, json_object)
         
+    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
+
     print("All Done... Terminating Program.")
 
 

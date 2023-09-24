@@ -1,5 +1,6 @@
-import json, boto3, os, re, shutil, tempfile
+import json, boto3, os, re, shutil, tempfile, sys
 from time import time_ns
+from subprocess import call
 
 from common_funcs import *
 
@@ -24,7 +25,7 @@ s3_client = boto3.client('s3')
 
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 JOBS_TABLE = dynamodb.Table(jobs_table_name)
-
+EFS_MOUNT_PATH = os.environ['EFS_MOUNT_PATH']
 
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
@@ -36,15 +37,23 @@ def store_log(context, genome, jobId):
     #store lambda id for future logging
     create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
 
-
-def efs_genome_dir(genome, suffix):
-    dir = ""
+def efs_genome_dir(accession):
+    lambda_mapped_efs_dir = f"{EFS_MOUNT_PATH}/{accession}/issl"
     #open efs
-
-    #search efs
-
-    #return directory from efs
-    return dir
+    found_files = []
+    for _,_,f in os.walk(lambda_mapped_efs_dir):
+        found_files.append(f)
+    if found_files:
+        expected_file = f"{accession}.issl"
+        if expected_file in found_files[0]:
+            #directory with issl file
+            issl_dir = f"{lambda_mapped_efs_dir}/{expected_file}"
+            return issl_dir
+        #to be removed in future
+        else:
+            print("You did something wrong, check logic")
+    else:
+        sys.exit('Error: Files have been removed from EFS.')
 
 
 def CalcIssl(targets, genome):
@@ -58,7 +67,7 @@ def CalcIssl(targets, genome):
 
     # Extract directory from Elastic File Storage (EFS) where the specific genome matches an .issl file
     #_, issl_file = s3_files_to_tmp(s3_genome_client,s3_bucket,genome,".issl")
-    issl_file = efs_genome_dir(genome, ".issl")
+    issl_file = efs_genome_dir(genome)
 
     # call the scoring method
     caller(

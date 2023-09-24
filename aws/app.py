@@ -30,9 +30,10 @@ from aws_cdk import (
 
 
 
-version = "-Dev-1-v3"
+version = "-Dev-2-v3"
 availabilityZone = "ap-southeast-2a"
-
+efs_lambda_access_point= "efs"
+efs_mount_path = f"/mnt/{efs_lambda_access_point}"
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -281,7 +282,7 @@ class CracklingStack(Stack):
         # # Enforcing a user identity using an access point
         efs_access_point = file_system.add_access_point(
             "LambdaAccessPoint",
-            path = "/efs",
+            path = f"/{efs_lambda_access_point}",
             create_acl=efs_.Acl(owner_uid="1001", owner_gid="1001", permissions="777"),  #all can read/write/search
             posix_user=efs_.PosixUser(uid="1001", gid="1001"),
         )
@@ -298,7 +299,7 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
@@ -308,6 +309,7 @@ class CracklingStack(Stack):
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             },
         )
@@ -339,12 +341,13 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
@@ -370,13 +373,14 @@ class CracklingStack(Stack):
             vpc=cracklingVpc,
             timeout= duration,
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'PATH' : path, 
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
@@ -407,7 +411,7 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
@@ -415,6 +419,7 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
@@ -444,11 +449,12 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
@@ -477,7 +483,7 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path="/mnt/efs"
+                ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
@@ -486,6 +492,7 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
+                'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
