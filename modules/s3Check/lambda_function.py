@@ -20,7 +20,7 @@ def filetest(s3_bucket,key):
 
 def create_multiple_logs(content, context, name):
     json_string = json.loads(content)
-    create_log(s3_client, s3_log_bucket, context, json_string['Genome'] , json_string['Sequence'], json_string['JobID'], name)
+    create_log(s3_client, s3_log_bucket, context, json_string['Genome'], json_string['JobID'], name)
 
 def lambda_handler(event, context):
     # get bucket
