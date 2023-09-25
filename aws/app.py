@@ -30,7 +30,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-2-v3"
+version = "-Dev-2-v4"
 availabilityZone = "ap-southeast-2a"
 efs_lambda_access_point= "efs"
 efs_mount_path = f"/mnt/{efs_lambda_access_point}"
