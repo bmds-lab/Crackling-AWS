@@ -140,19 +140,17 @@ def lambda_handler(event, context):
     #Since issl file does not exist, check if a fasta file can be used to create the issl file
     if not is_fasta_in_s3(s3_client, s3_bucket, accession):
         tmp_dir = dl_accession(accession)
+        #close temp fasta file directory
+        if os.path.exists(tmp_dir):
+            print("Cleaning Up...")
+            shutil.rmtree(tmp_dir)
 
     # fasta file exists or has been created, moving to generating issl file
     sendSQS(ISSL_QUEUE, json_object)
         
     create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
 
-    #close temp fasta file directory
-    if os.path.exists(tmp_dir):
-        print("Cleaning Up...")
-        shutil.rmtree(tmp_dir)
-
     print("All Done... Terminating Program.")
-
 
 if __name__== "__main__":
     event, context = main()

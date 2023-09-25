@@ -20,8 +20,8 @@ TARGET_SCAN_QUEUE = os.environ['QUEUE']
 EFS_MOUNT_PATH = os.environ['EFS_MOUNT_PATH']
 #byte -> megabyte magnitude
 BYTE_TO_MB_DIVIDER = 1048576
-#max fasta file size
-CUT_OFF_MB = 600 
+#max fasta file size - current issue with efs throughput causing a 11x duration (high lambda costs if scaled to 1000 target guides)
+CUT_OFF_MB = 100
     
 # Create S3 client
 s3_client = boto3.client('s3')
