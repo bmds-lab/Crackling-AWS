@@ -38,22 +38,19 @@ def store_log(context, genome, jobId):
     create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
 
 def efs_genome_dir(accession):
-    lambda_mapped_efs_dir = f"{EFS_MOUNT_PATH}/{accession}/issl"
-    #open efs
-    found_files = []
-    for _,_,f in os.walk(lambda_mapped_efs_dir):
-        found_files.append(f)
-    if found_files:
-        expected_file = f"{accession}.issl"
-        if expected_file in found_files[0]:
-            #directory with issl file
-            issl_dir = f"{lambda_mapped_efs_dir}/{expected_file}"
-            return issl_dir
-        #to be removed in future
-        else:
-            print("You did something wrong, check logic")
-    else:
-        sys.exit('Error: Files have been removed from EFS.')
+
+    efs_destination_path = f"{EFS_MOUNT_PATH}/{accession}/issl"
+    expected_file = f"{accession}.issl"
+
+    #graceful failure based on conditions
+    if not os.path.exists(efs_destination_path):
+        sys.exit('Failure - The EFS directory does not exist')
+
+    if not file_exist(efs_destination_path, [expected_file]):
+        sys.exit('Failure - The required issl file is missing')
+
+    #exact location of issl file in efs
+    return f"{efs_destination_path}/{expected_file}"
 
 
 def CalcIssl(targets, genome):
@@ -66,7 +63,6 @@ def CalcIssl(targets, genome):
         fp.write("\n")
 
     # Extract directory from Elastic File Storage (EFS) where the specific genome matches an .issl file
-    #_, issl_file = s3_files_to_tmp(s3_genome_client,s3_bucket,genome,".issl")
     issl_file = efs_genome_dir(genome)
 
     # call the scoring method

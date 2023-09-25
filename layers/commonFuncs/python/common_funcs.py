@@ -171,6 +171,43 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     # close temp directory
     shutil.rmtree(path)
     
+
+#### HELPER FUNCTIONS
+def clean_s3_folder(s3_client, s3_bucket, accession):
+    try:
+        paginator = s3_client.get_paginator("list_objects_v2")
+        response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
+            PaginationConfig={"PageSize": 1000})
+        for page in response:
+            files = page.get("Contents")
+            for filename in files:
+                print(filename)
+                s3_client.delete_object(
+                    Bucket=s3_bucket,
+                    Key=filename
+                )
+        print("cleaned-up s3 folder after download failure")
+    except ParamValidationError as aa:
+        print("verified clean-up of s3 folder after download failure")
+    except Exception as e:
+        print(f"{type(e)}: {e}")
+
+def is_fasta_in_s3(s3_client, s3_bucket, accession):
+    try:
+        paginator = s3_client.get_paginator("list_objects_v2")
+        response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
+        for page in response:
+            files = page.get("Contents")
+            if len(files) > 0:
+                print(f"{accession} exists in s3")
+                return True
+            else:
+                print(f"{accession} does not exist in s3")
+                return False
+    except Exception as e:
+        print(f"{type(e)}: {e}")
+        return False
+
 # Put log object in to s3 bucket
 def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
@@ -186,7 +223,17 @@ def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
         Key = f'{genome}/jobs/{jobid}/{func_name}.json',
         Body = context_string
     )
-    
+
+# Provide list of files to check if they exist in a directory
+def file_exist(path, files_to_expect):
+    # expected files exist
+    for file in files_to_expect:
+        file_path = f"{path}/{file}"
+        #any file missing means failure
+        if not os.path.isfile(file_path):
+            return False
+    return True
+
 # Thread task to write to csv if about to run out of execution time
 def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key):
     testtime = time_ns()

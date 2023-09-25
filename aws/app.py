@@ -344,6 +344,7 @@ class CracklingStack(Stack):
                 ap=efs_access_point, mount_path=efs_mount_path
             ),
             environment={
+                'QUEUE' : sqsTargetScan.queue_url,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
@@ -355,45 +356,13 @@ class CracklingStack(Stack):
         s3Genome.grant_read_write(lambdaIsslCreation)
         s3Log.grant_read_write(lambdaIsslCreation)
         sqsIsslCreation.grant_consume_messages(lambdaIsslCreation)
+        sqsTargetScan.grant_send_messages(lambdaIsslCreation)
         lambdaIsslCreation.add_event_source_mapping(
             "mapppIsslCreation",
             event_source_arn=sqsIsslCreation.queue_arn,
             batch_size=1
         )
         lambdaIsslCreation.add_to_role_policy(lambdaS3AccessPointIAM)
-
-
-        # s3-triggered lambda to SQS to targetScan
-        lambdaS3Check = lambda_.Function(self, "s3Check", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
-            handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            code=lambda_.Code.from_asset("../modules/s3Check"),
-            layers=[lambdaLayerCommonFuncs],
-            vpc=cracklingVpc,
-            timeout= duration,
-            filesystem=lambda_.FileSystem.from_efs_access_point(
-                ap=efs_access_point, mount_path=efs_mount_path
-            ),
-            environment={
-                'QUEUE' : sqsTargetScan.queue_url,
-                'LD_LIBRARY_PATH' : ld_library_path,
-                'BUCKET' : s3GenomeAccess.attr_arn,
-                'PATH' : path, 
-                'EFS_MOUNT_PATH': efs_mount_path,
-                'LOG_BUCKET': s3Log.bucket_name
-            }
-        )
-        
-        s3Genome.grant_read_write(lambdaS3Check)
-        s3Log.grant_read_write(lambdaS3Check)
-        # Create trigger for Lambda function using suffix
-        notification = s3_notify.LambdaDestination(lambdaS3Check)
-        notification.bind(self, s3Genome)        
-        # Add Create Event only for .jpg files
-        s3Genome.add_object_created_notification(
-           notification, s3_.NotificationKeyFilter(suffix='.notif'))
-        sqsTargetScan.grant_send_messages(lambdaS3Check)
         
         ### Lambda function that scans a sequence for CRISPR sites.
         # This function is triggered when a record is written to the DynamoDB jobs table.

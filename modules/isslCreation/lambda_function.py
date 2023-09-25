@@ -16,48 +16,81 @@ except:
 # Global variables
 s3_bucket = os.environ['BUCKET']
 s3_log_bucket = os.environ['LOG_BUCKET']
+TARGET_SCAN_QUEUE = os.environ['QUEUE']
 EFS_MOUNT_PATH = os.environ['EFS_MOUNT_PATH']
-
-#tmp_Dir = ""
-#starttime = time_ns()
+#byte -> megabyte magnitude
+BYTE_TO_MB_DIVIDER = 1048576
+#max fasta file size
+CUT_OFF_MB = 600 
     
 # Create S3 client
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
 
-def s3_file_to_ephemeral(s3_client, s3_bucket, accession):
+def fasta_size_check(accession):
+
+    # get file size of accession from s3 before download 
+    filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
+
+    # Check files exist
+    if(filesize < 1):
+        sys.exit("Error - Accession file is missing.")
+
+    filesize_in_MB = filesize/BYTE_TO_MB_DIVIDER
+    print(filesize_in_MB)
+
+    # notImplemented -  (requires Carl's issl split implemention of CracklingPlusPlus)
+    # Details - the memory bottleneck is reached at CUT_OFF_MB (600-650) due to file being written on memory.
+    # It takes 10 minutes to construct at the CUT_OFF_MB fasta size and lambda has a limit of 15 minutes.
+    if (filesize_in_MB > CUT_OFF_MB):
+        sys.exit("Error - Accession file is larger than function can handle (memory bottleneck) - 24/09/2023")
+
+    return filesize_in_MB
+
+def s3_file_to_tmp(s3_client, s3_bucket, accession):
+
+    fasta_file_name = f"{accession}.fa"
+
+    # use temp directory and file name for future file writing
     tmp_dir = get_tmp_dir()
-    fasta_file = f"{accession}.fa"
-    s3_fasta_file = f"{accession}/fasta/{fasta_file}"
-    tmp_dir_fasta = f"{tmp_dir}/{fasta_file}"
+    tmp_dir_fasta = f"{tmp_dir}/{fasta_file_name}"
+
+    #s3 directory where file is located
+    s3_fasta_file = f"{accession}/fasta/{fasta_file_name}"
+
     #store fasta file in lambda's local storage
     s3_resource.meta.client.download_file(s3_bucket, s3_fasta_file, tmp_dir_fasta)
     return tmp_dir_fasta, tmp_dir
 
-def upload_dir_to_efs(path, genome_path):
-    files = os.listdir(path)
-    for file in files:
-        tmp_path_file = f"{path}/{file}"
-        #print(tmp_path)
-        #/tmp/tmpg5e1z4s2/GCA_000482205.1.issl
-        print(f'Uploading: \"{file}\"...',end="")
-        destination_path = f"{EFS_MOUNT_PATH}/{genome_path}"
-        
-        if not os.path.exists(destination_path):
-            os.makedirs(destination_path)
-        try:
-            #/efs/GCA_000482205.1.issl
-            shutil.copy2(tmp_path_file, destination_path)
-            print(f"File moved to: {destination_path}")
-        except Exception as e:
-            print(f"Error moving file: {str(e)}")
-    # close temp directory
-    shutil.rmtree(path)
+
+def copy_tmp_to_efs(accession, tmp_path):
+
+    #efs directory to copy file into
+    efs_destination_path = f"{EFS_MOUNT_PATH}/{accession}/issl"
+
+    #create directory if not there
+    if not os.path.exists(efs_destination_path):
+        os.makedirs(efs_destination_path)
+
+    #get files from temp directory consisting of issl and offtarget
+    files = os.listdir(tmp_path)
+    if files:
+        for file in files:
+            #file to copy
+            tmp_source_file = f"{tmp_path}/{file}"
+            try:
+                print(f'Uploading: \"{file}\"...',end="")
+                #copy file from tmp directory into efs at specfic directory
+                shutil.copy2(tmp_source_file, efs_destination_path)
+                print(f"File copy to: {efs_destination_path}")
+            except Exception as e:
+                sys.exit(f"Failure - Error copying file: {str(e)}")
+    else:
+        sys.exit('Failure - The expected files do not exist.')
 
 
 # Build isslIndex
-#def isslcreate(accession, chr_fns, tmp_fasta_dir):
 def isslcreate(accession, tmp_fasta_dir):
     
     print("\nExtracting Offtargets...")
@@ -88,10 +121,8 @@ def isslcreate(accession, tmp_fasta_dir):
     time_2 = time()
     print(f"\n\nTime to create issl index: {(time_2-time_1)}.\n")
 
-    # Upload issl and offtarget files to s3
-    #upload_dir_to_s3(s3_client,s3_bucket,tmp_dir,f'{accession}/issl')
-    # Upload iss and offtarget files to AWS Elastic File Storage (EFS)
-    upload_dir_to_efs(tmp_dir, f"{accession}/issl")
+    # copy issl and offtarget files into AWS Elastic File Storage (EFS)
+    copy_tmp_to_efs(accession, tmp_dir)
 
 
 def lambda_handler(event, context):
@@ -100,43 +131,26 @@ def lambda_handler(event, context):
     sequence = args['Sequence']
     jobid = args['JobID']
 
+    body ={ 
+        "Genome": accession, 
+        "Sequence": sequence, 
+        "JobID": jobid
+    }
+    json_object = json.dumps(body)
+
     if accession == 'fail':
         sys.exit('Error: No accession found.')
     
-    # get file size of accession from s3 before download 
-    filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
-    # Check files exist
-    if(filesize < 1):
-        sys.exit("Accession file/s are missing.")
-
-    print(filesize)
-    # CURRENT CONFIG DETAILS (requires Carl's issl split implemention of CracklingPlusPlus)
-    CUT_OFF = 600 #in MegaBytes
-    if (filesize/1048576 > CUT_OFF):
-        sys.exit("Accession file is larger than function can handle (memory bottleneck) - 24/09/2023")
-
-    #csv_fn = 'issl_times.csv'
-    #lock_key = 'issl_lock'
-
-    # Create new thread for time to monitor debug limit
-    #thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
-    #thread1.daemon = True
-    #thread1.start()
+    #check that file size meets current limitations - 600MB file
+    _ = fasta_size_check(accession)
 
     # download from s3 based on accession
-    tmp_dir_fasta, tmp_dir = s3_file_to_ephemeral(s3_client, s3_bucket, accession)
-    #tmp_dir, chr_fns = s3_files_to_tmp(s3_client,s3_bucket,accession)
+    tmp_dir_fasta, tmp_dir = s3_file_to_tmp(s3_client, s3_bucket, accession)
 
     # Create issl files
-    #isslcreate(accession, chr_fns, tmp_dir)
     isslcreate(accession, tmp_dir_fasta)
 
-    # Successful exec of bowtie, write success to s3
-    #s3_success(s3_client,s3_bucket,accession,body)
-    print("SEND TO SQS TARGET SCAN - SQS NOT IMPLEMENTED")
-
-    # Add run to s3 csv for logging
-    #s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
+    sendSQS(TARGET_SCAN_QUEUE, json_object) 
     
     create_log(s3_client, s3_log_bucket, context, accession, jobid, 'IsslCreation')
 
