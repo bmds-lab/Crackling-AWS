@@ -54,8 +54,9 @@ def lambda_handler(event, context):
             'DateTime' : int(time()),
             'DateTimeHuman' : str(datetime.now()),
             'Genome' : genome,
-            'TotalJobs' : -1,
-            'CompletedJobs' : 0,
+            'Email' : "mattias.winsen@outlook.com"
+            'TotalTasks' : -1,
+            'CompletedTasks' : 0,
             'Version': 0
         }
     )

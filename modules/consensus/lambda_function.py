@@ -11,6 +11,8 @@ import time
 from sklearn.svm import SVC
 from subprocess import call
 
+from common_funcs import *
+
 SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
 
 call(f"cp -r /opt/rnaFold /tmp/rnaFold".split(' '))
@@ -22,6 +24,7 @@ low_energy_threshold = -30
 high_energy_threshold = -18
 
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
+jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
 
 sqs_client = boto3.client('sqs')
@@ -246,6 +249,9 @@ def lambda_handler(event, context):
 
     
     results = CalcConsensus(records)
+
+    # track number of tasks completed for each job by counting instances of each jobID
+    job_tasks = {}
     
     for key in results:
         result = results[key]
@@ -255,7 +261,16 @@ def lambda_handler(event, context):
             UpdateExpression='set Consensus = :c',
             ExpressionAttributeValues={':c': result['Consensus']}
         )
+
+        # increment task counter for each job
+        if result['JobID'] not in job_tasks:
+            # if job doesnt have an entry, create one
+            job_tasks.update({result['JobID'] : 1})
+        else:
+            job_tasks[result['JobID']] += 1
+
         #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+        
     
     # remove messages from the SQS queue. Max 10 at a time.
     for i in range(0, len(ReceiptHandles), 10):
@@ -270,6 +285,13 @@ def lambda_handler(event, context):
                 for delete in toDelete
             ]
         )
-    
+
+    # Update task counter for each job, and spawn a notification if a job is completed    
+    for jobID, task_count in job_tasks.items():
+        job = update_task_counter(dynamodb, jobs_table_name, jobID, task_count)
+
+        #notify user if job is completed
+        spawn_notification_if_complete(job,NOTIFICATION_SQS)
+
     return (event)
     

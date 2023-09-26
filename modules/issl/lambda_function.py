@@ -190,5 +190,12 @@ def lambda_handler(event, context):
                 for delete in toDelete
             ]
         )
+
+    # Update task counter for each job, and spawn a notification if a job is completed    
+    job = update_task_counter(dynamodb, jobs_table_name, jobId, 1)
+
+    #notify user if job is completed
+    spawn_notification_if_complete(job,NOTIFICATION_SQS)
+
     
     return (event)

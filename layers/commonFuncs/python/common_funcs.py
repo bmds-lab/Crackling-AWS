@@ -283,3 +283,45 @@ def main(genome,sequence,jobid):
     print(context.get_remaining_time_in_millis())
 
     return event, context
+
+# Thread safe function too update the task counter in jobs table
+def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
+    from boto3.dynamodb.conditions import Attr
+
+    
+    table = dynamoDbClient.Table(tableName)
+
+    # keep trying to add data too db until 
+    while True:    
+        #get current job
+        job = table.get_item(Key={"JobID" : str(jobID)})['Item']
+
+        currentVersion = job["Version"]
+
+        #update values
+        job["CompletedTasks"] += taskCount
+        job["Version"] += 1
+
+        try:
+            # Attempt to update the DB, if job has been overwritten since it was
+            # retrieved, this statement will error, and we can get data again and 
+            # start from beginning
+            table.put_item(
+                Item=job,
+                ConditionExpression=Attr("Version").eq(currentVersion)
+            )
+
+            return job
+
+        except ClientError as err:
+            #data has been access since fetched, keep looping
+            if err.response["Error"]["Code"] != 'ConditionalCheckFailedException':
+                # if the error isn't a result of concurrent access, raise it
+                    raise err
+
+# check if all of a job's tasks are completed. Takes an entry form the jobs table 
+# as input (which allows data returned from "update_task_counter" to be piped in)
+def spawn_notification_if_complete(job,notification_sqs):
+    if job["CompletedTasks"] >= job["TotalTasks"] and job["TotalTasks"] > 0:
+
+    else:

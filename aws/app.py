@@ -243,17 +243,23 @@ class CracklingStack(Stack):
         duration = Duration.minutes(15)
         
         # -> SQS queues
-        sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
+        sqsIsslCreation = sqs_.Queue(
+            self,
+            "sqsIsslCreation", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
         )
-        sqsTargetScan = sqs_.Queue(self, "sqsTargetScan", 
+        sqsTargetScan = sqs_.Queue(
+            self,
+            "sqsTargetScan", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
         )
-        sqsIssl = sqs_.Queue(self, "sqsIssl", 
+        sqsIssl = sqs_.Queue(
+            self,
+            "sqsIssl", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
@@ -261,11 +267,21 @@ class CracklingStack(Stack):
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
         # The consensus lambda function processes items in this queue
-        sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
+        sqsConsensus = sqs_.Queue(
+            self,
+            "sqsConsensus", 
             receive_message_wait_time=Duration.seconds(20),
             visibility_timeout=duration,
             retention_period=duration
         )
+
+        sqsNotification = sqs_.Queue(
+            self,
+            "sqsNotification", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+            )
 
 
         # Elastic File System Implementation
@@ -422,6 +438,7 @@ class CracklingStack(Stack):
             ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
+                'JOBS_TABLE' : ddbJobs.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
                 'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -476,6 +493,30 @@ class CracklingStack(Stack):
         s3Genome.grant_read_write(lambdaIssl)
         s3Log.grant_read_write(lambdaIssl)
         lambdaIssl.add_to_role_policy(lambdaS3AccessPointIAM)
+
+
+        # Lambda Notifier
+        # Consumes message from notification que
+        # sends email to user
+        lambdaNotifier = lambda_.Function(self, "Notifier", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/notifier"),
+            layers=[lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            timeout= duration,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'BUCKET' : s3GenomeAccess.attr_arn,
+                'PATH' : path,
+                'LOG_BUCKET': s3Log.bucket_name
+            },
+        )
+        sqsNotification.grant_consume_messages(lambdaNotifier)
+        ddbJobs.grant_stream_read(lambdaNotifier)
+
 
         ### API
         # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
