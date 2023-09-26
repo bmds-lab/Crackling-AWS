@@ -53,7 +53,10 @@ def lambda_handler(event, context):
             'Sequence' : sequence,
             'DateTime' : int(time()),
             'DateTimeHuman' : str(datetime.now()),
-            'Genome' : genome
+            'Genome' : genome,
+            'TotalJobs' : -1,
+            'CompletedJobs' : 0,
+            'Version': 0
         }
     )
     
