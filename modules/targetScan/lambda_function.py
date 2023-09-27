@@ -6,6 +6,7 @@ from boto3.dynamodb.conditions import Key
 from common_funcs import *
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
+JOBS_TABLE = os.getenv('JOBS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 s3_log_bucket = os.environ['LOG_BUCKET']
@@ -78,6 +79,8 @@ def target_iterator(seq):
 
 # Find target sites and add to dictionary, 'candidateTargets'.
 def find_targets(params):
+    taskCounter = 0
+
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
             targetEntry = create_target_entry(params, index, target)
@@ -96,7 +99,10 @@ def find_targets(params):
                     QueueUrl=targetQueue,
                     MessageBody=msg,
                 )
+
+                taskCounter += 1 #increment task counter
                 
+
                 #print(
                 #    index, 
                 #    target,
@@ -104,6 +110,8 @@ def find_targets(params):
                 #    response['ResponseMetadata']['HTTPStatusCode'], 
                 #    msg
                 #)
+    
+    set
 
 
 def deleteCandidateTargets(jobid):

@@ -403,6 +403,7 @@ class CracklingStack(Stack):
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
+                'JOBS_TABLE' : ddbJobs.table_name,
                 'PATH' : path,
                 'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
@@ -412,6 +413,7 @@ class CracklingStack(Stack):
         s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
+        ddbJobs.grant_read_write_data(lambdaTargetScan)
         sqsConsensus.grant_send_messages(lambdaTargetScan)
         sqsIssl.grant_send_messages(lambdaTargetScan)
         lambdaTargetScan.add_event_source_mapping(
@@ -439,11 +441,13 @@ class CracklingStack(Stack):
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
                 'EFS_MOUNT_PATH': efs_mount_path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
+        sqsNotification.grant_consume_messages(lambdaConsensus)
         s3Log.grant_read_write(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
@@ -453,6 +457,7 @@ class CracklingStack(Stack):
             max_batching_window=Duration.seconds(1)
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
+        ddbJobs.grant_read_write_data(lambdaConsensus)
 
 
         ### Lambda function that assesses guide specificity using ISSL.
@@ -476,6 +481,7 @@ class CracklingStack(Stack):
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'EFS_MOUNT_PATH': efs_mount_path,
@@ -483,6 +489,7 @@ class CracklingStack(Stack):
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
+        sqsNotification.grant_consume_messages(lambdaIssl)
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
@@ -511,7 +518,8 @@ class CracklingStack(Stack):
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
+                'LOG_BUCKET': s3Log.bucket_name,
+                'FRONTEND_URL': s3Frontend.bucket_website_url
             },
         )
         sqsNotification.grant_consume_messages(lambdaNotifier)

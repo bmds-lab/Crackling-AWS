@@ -284,23 +284,22 @@ def main(genome,sequence,jobid):
 
     return event, context
 
-# Thread safe function too update the task counter in jobs table
-def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
+# perform an action on a job object from dydb, then perform a set on dydb in a threadsafe manner
+def set_job_table(dynamoDbClient,tableName,action, jobID):
+    # keep trying to add data too db until 
     from boto3.dynamodb.conditions import Attr
-
-    
     table = dynamoDbClient.Table(tableName)
 
-    # keep trying to add data too db until 
     while True:    
         #get current job
         job = table.get_item(Key={"JobID" : str(jobID)})['Item']
 
+        # get current version, then increment to next version
         currentVersion = job["Version"]
-
-        #update values
-        job["CompletedTasks"] += taskCount
         job["Version"] += 1
+
+        # perform some action on the job object
+        job = action(job)
 
         try:
             # Attempt to update the DB, if job has been overwritten since it was
@@ -311,7 +310,7 @@ def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
                 ConditionExpression=Attr("Version").eq(currentVersion)
             )
 
-            return job
+            return job # return the up to date job
 
         except ClientError as err:
             #data has been access since fetched, keep looping
@@ -319,9 +318,33 @@ def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
                 # if the error isn't a result of concurrent access, raise it
                     raise err
 
+
+# Thread safe function too set the total number of tasks (to be completed) in jobs table
+def set_task_total(dynamoDbClient, tableName, jobID, taskCount):
+    def setTotalTasks(job):
+        #update values
+        job["TotalTasks"] = taskCount
+
+        return job
+    
+    return set_job_table(dynamoDbClient, tableName, setTotalTasks, jobID)
+
+
+# Thread safe function too update the task counter in jobs table
+def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
+    # function to increment the task counter
+    def updateCompletedTasks(job):    
+        #update values
+        job["CompletedTasks"] += taskCount
+
+        return job
+    
+    return set_job_table(dynamoDbClient, tableName, updateCompletedTasks, jobID)
+
+
 # check if all of a job's tasks are completed. Takes an entry form the jobs table 
 # as input (which allows data returned from "update_task_counter" to be piped in)
-def spawn_notification_if_complete(job,notification_sqs):
+def spawn_notification_if_complete(job,notification_queue_url):
     if job["CompletedTasks"] >= job["TotalTasks"] and job["TotalTasks"] > 0:
-
-    else:
+        print("All tasks complete, spawning a notification lambda")
+        sendSQS(notification_queue_url,job["JobID"])

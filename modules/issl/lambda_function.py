@@ -13,6 +13,8 @@ BIN_ISSL_SCORER = r"/tmp/isslScoreOfftargets"
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
+notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
+
 
 #boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
@@ -195,7 +197,7 @@ def lambda_handler(event, context):
     job = update_task_counter(dynamodb, jobs_table_name, jobId, 1)
 
     #notify user if job is completed
-    spawn_notification_if_complete(job,NOTIFICATION_SQS)
+    spawn_notification_if_complete(job,notification_queue_url)
 
     
     return (event)

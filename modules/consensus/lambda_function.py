@@ -26,6 +26,7 @@ high_energy_threshold = -18
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
+notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
 sqs_client = boto3.client('sqs')
 
@@ -291,7 +292,7 @@ def lambda_handler(event, context):
         job = update_task_counter(dynamodb, jobs_table_name, jobID, task_count)
 
         #notify user if job is completed
-        spawn_notification_if_complete(job,NOTIFICATION_SQS)
+        spawn_notification_if_complete(job,notification_queue_url)
 
     return (event)
     

@@ -5,6 +5,7 @@ from common_funcs import *
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+FROM_EMAIL = "notification@crackling.com" # change this to change the address the email is sent from
 
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 FRONTEND_URL = os.getenv('FRONTEND_URL')
@@ -43,7 +44,7 @@ def lambda_handler(event, context):
             #get email address from jobs table
             job = table.get_item(Key={"JobID" : str(jobID)})['Item']
 
-
+            # populate email template
             emailBody = f"""
             <html>
             <head>
@@ -51,7 +52,8 @@ def lambda_handler(event, context):
             </head>
             <body>Hello!<br>
             <br>
-            Your Crackling Query for Genome {genome} is complete. Please find the results <a href="{FRONTEND_URL}/results/{jobID}/targets">here</a><br>
+            Your Crackling Query for Genome {job["Genome"]} is complete. Please find the results <a href="{FRONTEND_URL}">here</a><br>
+            Job Information:<br>
             <table>
             <tr>
                 <th>Time</th>
@@ -60,15 +62,25 @@ def lambda_handler(event, context):
                 <th>Query Sequence</th>
             </tr>
             <tr>
-                <td>{job[""]}</td>
-                <td>{job[""]}</td>
-                <td>{job[""]}</td>
-                <td>{job[""]}</td>
+                <td>{job["DateTimeHuman"]}</td>
+                <td>{job["Genome"]}</td>
+                <td>{job["JobID"]}</td>
+                <td>{job["Sequence"]}</td>
             </tr>
             </html>
             """
 
+            
 
+            # generate the message
+            email = MIMEMultipart('alternative')
+            email['Subject'] = f"Crackling Query Complete | {job['Genome']}"
+            email['To'] = job["Email"]
+            email['From'] = FROM_EMAIL
+            email.attach(MIMEText(emailBody,'html'))
+
+            # send the message
+            smtp_server.sendmail(FROM_EMAIL, job["Email"], email.as_string())
 
 
 
