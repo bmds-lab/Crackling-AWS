@@ -199,7 +199,7 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        ### Lambda layer contaiing shared libraries for compiled binaries
+        ### Lambda layer containing shared libraries for compiled binaries
         lambdaLayerLib = lambda_.LayerVersion(self, "lib",
             code=lambda_.Code.from_asset("../layers/lib"),
             removal_policy=RemovalPolicy.DESTROY,
@@ -409,6 +409,7 @@ class CracklingStack(Stack):
             ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
                 'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
@@ -423,6 +424,7 @@ class CracklingStack(Stack):
         s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
+        ddbTaskTracking.grant_read_write_data(lambdaTargetScan)
         ddbJobs.grant_read_write_data(lambdaTargetScan)
         sqsConsensus.grant_send_messages(lambdaTargetScan)
         sqsIssl.grant_send_messages(lambdaTargetScan)
@@ -438,9 +440,9 @@ class CracklingStack(Stack):
         lambdaConsensus = lambda_.Function(self, "consensus", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            # insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/consensus"),
-            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
+            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,

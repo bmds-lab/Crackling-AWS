@@ -288,34 +288,35 @@ def main(genome,sequence,jobid):
 def set_job_table(dynamoDbClient,tableName,action, jobID):
     # keep trying to add data too db until 
     from boto3.dynamodb.conditions import Attr
-    with dynamoDbClient.Table(tableName) as table:
-        while True:    
-            #get current job
-            job = table.get_item(Key={"JobID" : str(jobID)})['Item']
+    table = dynamoDbClient.Table(tableName)
+    
+    while True:    
+        #get current job
+        job = table.get_item(Key={"JobID" : str(jobID)})['Item']
 
-            # get current version, then increment to next version
-            currentVersion = job["Version"]
-            job["Version"] += 1
+        # get current version, then increment to next version
+        currentVersion = job["Version"]
+        job["Version"] += 1
 
-            # perform some action on the job object
-            job = action(job)
+        # perform some action on the job object
+        job = action(job)
 
-            try:
-                # Attempt to update the DB, if job has been overwritten since it was
-                # retrieved, this statement will error, and we can get data again and 
-                # start from beginning
-                table.put_item(
-                    Item=job,
-                    ConditionExpression=Attr("Version").eq(currentVersion)
-                )
+        try:
+            # Attempt to update the DB, if job has been overwritten since it was
+            # retrieved, this statement will error, and we can get data again and 
+            # start from beginning
+            table.put_item(
+                Item=job,
+                ConditionExpression=Attr("Version").eq(currentVersion)
+            )
 
-                return job # return the up to date job
+            return job # return the up to date job
 
-            except ClientError as err:
-                #data has been access since fetched, keep looping
-                if err.response["Error"]["Code"] != 'ConditionalCheckFailedException':
-                    # if the error isn't a result of concurrent access, raise it
-                        raise err
+        except ClientError as err:
+            #data has been access since fetched, keep looping
+            if err.response["Error"]["Code"] != 'ConditionalCheckFailedException':
+                # if the error isn't a result of concurrent access, raise it
+                    raise err
 
 
 # Thread safe function too set the total number of tasks (to be completed) in jobs table
@@ -344,6 +345,6 @@ def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
 # check if all of a job's tasks are completed. Takes an entry form the jobs table 
 # as input (which allows data returned from "update_task_counter" to be piped in)
 def spawn_notification_if_complete(job,notification_queue_url):
-    if job["CompletedTasks"] >= job["TotalTasks"] and job["TotalTasks"] > 0:
+    if job["CompletedTasks"] >= (job["TotalTasks"] - 1) and job["TotalTasks"] > 0:
         print("All tasks complete, spawning a notification lambda")
         sendSQS(notification_queue_url,job["JobID"])

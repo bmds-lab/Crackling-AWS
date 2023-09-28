@@ -7,6 +7,7 @@ from common_funcs import *
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 JOBS_TABLE = os.getenv('JOBS_TABLE')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 NOTIFICATION_SQS = os.getenv('NOTIFICATION_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
@@ -156,7 +157,7 @@ def lambda_handler(event, context):
     taskCount = find_targets(params) 
 
     # set the total number of tasks the job needs to complete
-    job = set_task_total(dynamodb, JOBS_TABLE, jobid, taskCount)
+    job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
 
     #just in case by some bizare circumstances target scan finishes after ISSL/Consensus, check if all jobs are completed
     spawn_notification_if_complete(job, NOTIFICATION_SQS)

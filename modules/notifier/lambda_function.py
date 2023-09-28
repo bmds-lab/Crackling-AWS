@@ -1,5 +1,5 @@
 import boto3, os, re, json, smtplib
-from common_funcs import *
+# from common_funcs import *
 
 # HTML Support
 from email.mime.text import MIMEText
@@ -42,48 +42,49 @@ def lambda_handler(event, context):
             jobID = json.loads(record['body'])['JobID']
 
             #get email address from jobs table
-            job = table.get_item(Key={"JobID" : str(jobID)})['Item']
+            # job = table.get_item(Key={"JobID" : str(jobID)})['Item']
 
             # populate email template
-            emailBody = f"""
-            <html>
-            <head>
-            {emailHeader}
-            </head>
-            <body>Hello!<br>
-            <br>
-            Your Crackling Query for Genome {job["Genome"]} is complete. Please find the results <a href="{FRONTEND_URL}">here</a><br>
-            Job Information:<br>
-            <table>
-            <tr>
-                <th>Time</th>
-                <th>Genome</th>
-                <th>JobID</th>
-                <th>Query Sequence</th>
-            </tr>
-            <tr>
-                <td>{job["DateTimeHuman"]}</td>
-                <td>{job["Genome"]}</td>
-                <td>{job["JobID"]}</td>
-                <td>{job["Sequence"]}</td>
-            </tr>
-            </html>
-            """
+            emailBody = "this is a test"
+            # emailBody = f"""
+            # <html>
+            # <head>
+            # {emailHeader}
+            # </head>
+            # <body>Hello!<br>
+            # <br>
+            # Your Crackling Query for Genome {job["Genome"]} is complete. Please find the results <a href="{FRONTEND_URL}">here</a><br>
+            # Job Information:<br>
+            # <table>
+            # <tr>
+            #     <th>Time</th>
+            #     <th>Genome</th>
+            #     <th>JobID</th>
+            #     <th>Query Sequence</th>
+            # </tr>
+            # <tr>
+            #     <td>{job["DateTimeHuman"]}</td>
+            #     <td>{job["Genome"]}</td>
+            #     <td>{job["JobID"]}</td>
+            #     <td>{job["Sequence"]}</td>
+            # </tr>
+            # </html>
+            # """
 
             
 
             # generate the message
             email = MIMEMultipart('alternative')
-            email['Subject'] = f"Crackling Query Complete | {job['Genome']}"
-            email['To'] = job["Email"]
+            email['Subject'] = f"test"
+            # email['Subject'] = f"Crackling Query Complete | {job['Genome']}"
+            email['To'] = "mattias.winsen@outlook.com"
+            # email['To'] = job["Email"]
             email['From'] = FROM_EMAIL
             email.attach(MIMEText(emailBody,'html'))
 
             # send the message
-            smtp_server.sendmail(FROM_EMAIL, job["Email"], email.as_string())
+            # smtp_server.sendmail(FROM_EMAIL, job["Email"], email.as_string())
+            smtp_server.sendmail(FROM_EMAIL, "mattias.winsen@outlook.com", email.as_string())
 
 
-
-        
-    
-    
+lambda_handler("e","e")

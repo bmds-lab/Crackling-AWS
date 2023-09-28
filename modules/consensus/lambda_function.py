@@ -6,7 +6,7 @@ import glob
 import joblib
 import re
 import ast
-import time
+from time import time_ns
 
 from sklearn.svm import SVC
 from subprocess import call
@@ -118,7 +118,6 @@ def _CalcRnaFold(seqs):
     with open(tmpScored.name, 'r') as fRnaOutput:
         RNA_structures = fRnaOutput.readlines()
 
-    i = 0
     for seq in seqs:
         results[seq] = {}
         results[seq]['result'] = 0
@@ -160,7 +159,6 @@ def _CalcRnaFold(seqs):
                         results[transToDNA(seq)]['result'] = 0 # reject due to this reason
                     else:
                         results[seq]['result'] = 1 # accept due to this reason
-            i += 1
 
     return results
 
@@ -280,7 +278,7 @@ def lambda_handler(event, context):
             QueueUrl=consensus_queue_url,
             Entries=[
                 {
-                    'Id': f"{time.time_ns()}",
+                    'Id': f"{time_ns()}",
                     'ReceiptHandle': delete
                 }
                 for delete in toDelete
