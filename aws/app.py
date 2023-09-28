@@ -145,6 +145,14 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
+        # Stores information on the number of tasks completed by each job (which is used in notifcation system to track job completeness)
+        ddbTaskTracking = ddb_.Table(self, "ddbTaskTracking",
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
+            partition_key=ddb_.Attribute(name="JobID", type=ddb_.AttributeType.STRING),
+            stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
+        )
+
         ### DynamoDB table for storing targets.
         # The sort key enables quicker indexing.
         ddbTargets = ddb_.Table(self, "ddbTargets",
@@ -213,28 +221,6 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../layers/isslCreation"),
             removal_policy=RemovalPolicy.DESTROY
         )
-
-        ### Lambda function that acts as the entry point to the application.
-        # This function creates a record in the DynamoDB jobs table.
-        # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
-        # Read/write permissions on the jobs table needs to be granted to this function.
-        lambdaCreateJob = lambda_.Function(self, "createJob", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
-            handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
-            code=lambda_.Code.from_asset("../modules/createJob"),
-            layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
-            vpc=cracklingVpc,
-            # 
-            # was this meant to be left commented
-            environment={
-                'JOBS_TABLE' : ddbJobs.table_name,
-                'MAX_SEQ_LENGTH' : '20000',
-                'LOG_BUCKET': s3Log.bucket_name
-            }
-        )
-        ddbJobs.grant_read_write_data(lambdaCreateJob)
-        s3Log.grant_read_write(lambdaCreateJob)
         
         #Variables used over many lambdas
         ld_library_path = ("/opt/libs:/lib64:/usr/lib64:$LAMBDA_RUNTIME_DIR:"
@@ -302,7 +288,30 @@ class CracklingStack(Stack):
             create_acl=efs_.Acl(owner_uid="1001", owner_gid="1001", permissions="777"),  #all can read/write/search
             posix_user=efs_.PosixUser(uid="1001", gid="1001"),
         )
-
+        ### Lambda function that acts as the entry point to the application.
+        # This function creates a record in the DynamoDB jobs table.
+        # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
+        # Read/write permissions on the jobs table needs to be granted to this function.
+        lambdaCreateJob = lambda_.Function(self, "createJob", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/createJob"),
+            layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
+            vpc=cracklingVpc,
+            # 
+            # was this meant to be left commented
+            environment={
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'MAX_SEQ_LENGTH' : '20000',
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
+                'LOG_BUCKET': s3Log.bucket_name
+            }
+        )
+        ddbJobs.grant_read_write_data(lambdaCreateJob)
+        ddbTaskTracking.grant_read_write_data(lambdaCreateJob)
+        s3Log.grant_read_write(lambdaCreateJob)
+        
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_8,
@@ -401,6 +410,7 @@ class CracklingStack(Stack):
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'JOBS_TABLE' : ddbJobs.table_name,
@@ -409,7 +419,7 @@ class CracklingStack(Stack):
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
-        
+        sqsNotification.grant_send_messages(lambdaTargetScan)
         s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
@@ -440,6 +450,7 @@ class CracklingStack(Stack):
             ),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
@@ -447,7 +458,7 @@ class CracklingStack(Stack):
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
-        sqsNotification.grant_consume_messages(lambdaConsensus)
+        sqsNotification.grant_send_messages(lambdaConsensus)
         s3Log.grant_read_write(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
@@ -457,6 +468,7 @@ class CracklingStack(Stack):
             max_batching_window=Duration.seconds(1)
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
+        ddbTaskTracking.grant_read_write_data(lambdaConsensus)
         ddbJobs.grant_read_write_data(lambdaConsensus)
 
 
@@ -478,6 +490,7 @@ class CracklingStack(Stack):
             ),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
@@ -489,13 +502,14 @@ class CracklingStack(Stack):
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
-        sqsNotification.grant_consume_messages(lambdaIssl)
+        sqsNotification.grant_send_messages(lambdaIssl)
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
+        ddbTaskTracking.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
         s3Genome.grant_read_write(lambdaIssl)
         s3Log.grant_read_write(lambdaIssl)
@@ -524,6 +538,11 @@ class CracklingStack(Stack):
         )
         sqsNotification.grant_consume_messages(lambdaNotifier)
         ddbJobs.grant_stream_read(lambdaNotifier)
+        lambdaNotifier.add_event_source_mapping(
+            "mapLdaNotifierSqsNotification",
+            event_source_arn=sqsNotification.queue_arn,
+            batch_size=1
+        )
 
 
         ### API

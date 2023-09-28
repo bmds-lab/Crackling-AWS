@@ -8,6 +8,7 @@ from common_funcs import *
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 JOBS_TABLE = os.getenv('JOBS_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
+NOTIFICATION_SQS = os.getenv('NOTIFICATION_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 s3_log_bucket = os.environ['LOG_BUCKET']
 
@@ -110,8 +111,7 @@ def find_targets(params):
                 #    response['ResponseMetadata']['HTTPStatusCode'], 
                 #    msg
                 #)
-    
-    set
+    return taskCounter
 
 
 def deleteCandidateTargets(jobid):
@@ -153,7 +153,14 @@ def lambda_handler(event, context):
     
     create_log(s3_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
     
-    find_targets(params) 
+    taskCount = find_targets(params) 
+
+    # set the total number of tasks the job needs to complete
+    job = set_task_total(dynamodb, JOBS_TABLE, jobid, taskCount)
+
+    #just in case by some bizare circumstances target scan finishes after ISSL/Consensus, check if all jobs are completed
+    spawn_notification_if_complete(job, NOTIFICATION_SQS)
+
         #print('Processed INSERT event for {}.'.format(jobid))
         
     # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']

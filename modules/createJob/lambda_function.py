@@ -8,12 +8,14 @@ from common_funcs import *
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
 s3_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(JOBS_TABLE)
+jobTable = dynamodb.Table(JOBS_TABLE)
+taskTrackingTable = dynamodb.Table(TASK_TRACKING_TABLE)
 
 headers = {
     'Access-Control-Allow-Headers'  : 'Content-Type',
@@ -47,7 +49,8 @@ def lambda_handler(event, context):
 
     jobid = str(uuid.uuid4())
 
-    table.put_item(
+    # add to jobs table
+    jobTable.put_item(
         Item={
             'JobID' : jobid,
             'Sequence' : sequence,
@@ -55,6 +58,13 @@ def lambda_handler(event, context):
             'DateTimeHuman' : str(datetime.now()),
             'Genome' : genome,
             'Email' : "mattias.winsen@outlook.com"
+        }
+    )
+
+    # add to task tracking table
+    taskTrackingTable.put_item(
+        Item={
+            'JobID' : jobid,
             'TotalTasks' : -1,
             'CompletedTasks' : 0,
             'Version': 0

@@ -288,35 +288,34 @@ def main(genome,sequence,jobid):
 def set_job_table(dynamoDbClient,tableName,action, jobID):
     # keep trying to add data too db until 
     from boto3.dynamodb.conditions import Attr
-    table = dynamoDbClient.Table(tableName)
+    with dynamoDbClient.Table(tableName) as table:
+        while True:    
+            #get current job
+            job = table.get_item(Key={"JobID" : str(jobID)})['Item']
 
-    while True:    
-        #get current job
-        job = table.get_item(Key={"JobID" : str(jobID)})['Item']
+            # get current version, then increment to next version
+            currentVersion = job["Version"]
+            job["Version"] += 1
 
-        # get current version, then increment to next version
-        currentVersion = job["Version"]
-        job["Version"] += 1
+            # perform some action on the job object
+            job = action(job)
 
-        # perform some action on the job object
-        job = action(job)
+            try:
+                # Attempt to update the DB, if job has been overwritten since it was
+                # retrieved, this statement will error, and we can get data again and 
+                # start from beginning
+                table.put_item(
+                    Item=job,
+                    ConditionExpression=Attr("Version").eq(currentVersion)
+                )
 
-        try:
-            # Attempt to update the DB, if job has been overwritten since it was
-            # retrieved, this statement will error, and we can get data again and 
-            # start from beginning
-            table.put_item(
-                Item=job,
-                ConditionExpression=Attr("Version").eq(currentVersion)
-            )
+                return job # return the up to date job
 
-            return job # return the up to date job
-
-        except ClientError as err:
-            #data has been access since fetched, keep looping
-            if err.response["Error"]["Code"] != 'ConditionalCheckFailedException':
-                # if the error isn't a result of concurrent access, raise it
-                    raise err
+            except ClientError as err:
+                #data has been access since fetched, keep looping
+                if err.response["Error"]["Code"] != 'ConditionalCheckFailedException':
+                    # if the error isn't a result of concurrent access, raise it
+                        raise err
 
 
 # Thread safe function too set the total number of tasks (to be completed) in jobs table
