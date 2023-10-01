@@ -269,18 +269,6 @@ def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
         Body = context_string
     )
 
-def check_s3_object_exists(bucket, key):
-    try:
-        s3.head_object(Bucket=bucket, Key=key)
-        return "Object exists."
-    except s3.exceptions.NoSuchKey:
-        return "No such object."
-    except s3.exceptions.NoSuchBucket:
-        return "No such bucket."
-    except Exception as e:
-        return e
-
-
 # Provide list of files to check if they exist in a directory
 def file_exist(path, files_to_expect):
     # expected files exist
