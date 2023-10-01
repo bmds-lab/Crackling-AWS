@@ -18,29 +18,21 @@ s3_log_bucket = os.environ['LOG_BUCKET']
 TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
 ISSL_QUEUE = os.getenv('ISSL_QUEUE')
 LIST_PREFIXES = [".issl", ".offtargets"]
-EFS_MOUNT_PATH = os.environ['EFS_MOUNT_PATH']
 
 # Create S3 client
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
 
-def is_issl_in_efs(accession):
-    
-    result = False
-    #efs directory where issl and offtargets are expected
-    efs_destination_path = f"{EFS_MOUNT_PATH}/{accession}/issl"
-    #file name of expected files
+def is_issl_in_s3(accession):
+    s3_destination_path = f"{accession}/issl"
+
+    #issl and offtarget files based on accession
     files_to_expect = []
     for prefix in LIST_PREFIXES:
         files_to_expect.append(accession + prefix)
-    
-    #determine if efs directory exists
-    if not os.path.exists(efs_destination_path):
-        return result
-    #check that required files exist in directory
-    result = file_exist(efs_destination_path, files_to_expect)
-    return result
+
+    return files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, files_to_expect)
 
 
 # Function uses the ncbi api to download the accession data and it uploads it to AWS S3 bucket
@@ -130,8 +122,8 @@ def lambda_handler(event, context):
     if accession == 'fail':
         sys.exit('Error: No accession found.')
     
-    #Determine if the mounted EFS has the required issl file needed to skip ahead in pipeline
-    if is_issl_in_efs(accession):
+    #Determine if S3 has required issl files to skip ahead in pipeline
+    if is_issl_in_s3(accession):
         print ("Issl file has already been generated. Moving to scoring process")
         sendSQS(TARGET_SCAN_QUEUE, json_object) 
         print("All Done... Terminating Program.")

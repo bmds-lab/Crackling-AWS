@@ -1,5 +1,5 @@
 from genericpath import isfile
-import os, re, shutil, tempfile, boto3, json
+import os, re, shutil, tempfile, boto3, json, sys
 from unicodedata import name
 
 from time import time, time_ns, sleep
@@ -118,8 +118,16 @@ def s3_fasta_dir_size(s3_client,s3_bucket,path):
                 filesize += file['Size']
     return filesize
 
+
+#gets the size of a file, stackoverflow: questions/5315603
+def s3_get_file_size(s3_client, s3_bucket, path):
+    response = s3_client.head_object(Bucket = s3_bucket, Key = path)
+    filesize = response['ContentLength']
+    return filesize
+
+
 # download fasta files from S3 bucket to tmp directory and return csv string of fasta tmp filepaths
-def s3_files_to_tmp(s3_client,s3_bucket,accession,suffix=".fa"):
+def s3_files_to_tmp_old(s3_client,s3_bucket,accession,suffix=".fa"):
     tmpArr = tempfile.mkdtemp()
     names = []
     print(s3_bucket)
@@ -169,6 +177,7 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
         s3_client.upload_file(f'{path}/{file}', s3_bucket, name)
         print(" Done.")
     # close temp directory
+    print("Cleaning Up...")
     shutil.rmtree(path)
     
 
@@ -208,6 +217,42 @@ def is_fasta_in_s3(s3_client, s3_bucket, accession):
         print(f"{type(e)}: {e}")
         return False
 
+def s3_object_exists(s3_client, s3_bucket, key):
+    try:
+        s3_client.head_object(Bucket=s3_bucket, Key=key)
+        print("Success - object exists.")
+        return True
+    except s3_client.exceptions.NoSuchKey:
+        print("Error - No such object.")
+        return False
+    except s3_client.exceptions.NoSuchBucket:
+        sys.exit('Error - No such bucket.')
+    except Exception as e:
+        print("No directory exists: "+ str(e))
+        return False
+
+# determine if all wanted genome issl files exist
+def issl_files_exist_s3(s3_client, s3_bucket, accession_list):
+    # expected files exist
+    for accession in accession_list:
+        file_to_expect = f"{accession}.issl"
+        key = f"{accession}/issl/{file_to_expect}"
+        #any file missing means failure
+        if not s3_object_exists(s3_client, s3_bucket, key):
+            return False
+    return True
+
+# Provide list of files to check if they exist in a directory
+def files_exist_s3_dir(s3_client, s3_bucket, s3_path, files_to_expect):
+    # expected files exist
+    for file in files_to_expect:
+        key = f"{s3_path}/{file}"
+        #any file missing means failure
+        if not s3_object_exists(s3_client, s3_bucket, key):
+            return False
+    return True
+
+
 # Put log object in to s3 bucket
 def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
     #store context of lambda log group and id for future access
@@ -223,6 +268,18 @@ def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
         Key = f'{genome}/jobs/{jobid}/{func_name}.json',
         Body = context_string
     )
+
+def check_s3_object_exists(bucket, key):
+    try:
+        s3.head_object(Bucket=bucket, Key=key)
+        return "Object exists."
+    except s3.exceptions.NoSuchKey:
+        return "No such object."
+    except s3.exceptions.NoSuchBucket:
+        return "No such bucket."
+    except Exception as e:
+        return e
+
 
 # Provide list of files to check if they exist in a directory
 def file_exist(path, files_to_expect):
