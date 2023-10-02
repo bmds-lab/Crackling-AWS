@@ -111,7 +111,7 @@ def canStoreAll(issl_dict):
 def getOptimalChoice(keys, issl_dict):
     largestLength = 0
     largestLengthSize = 0
-    largestGenome = ""
+    largestLengthGenome = ""
     #algorithm to maximise best option based on len and genome size
     for genome in keys:
         genome_length = issl_dict[genome]['Length']
@@ -172,7 +172,7 @@ def downloadIsslFiles(targetsToScorePerGenome, tmp_dir):
         s3_destination_path = f"{genome}/issl"
         if not files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, [genome+".issl"]):
             sys.exit('Failure - The required issl file is missing')
-        return downloadFiles(tmp_dir, [genome])
+        return downloadFiles(tmp_dir, [genome]), False
     #multi-genome batch
     else:
         if not issl_files_exist_s3(s3_client, s3_bucket, issl_genomes):
@@ -183,10 +183,10 @@ def downloadIsslFiles(targetsToScorePerGenome, tmp_dir):
         if not canStoreAll(issl_dict):
             genomes_to_keep = determineGenomesToKeep(issl_dict)
             #download files that fit criteria
-            return downloadFiles(tmp_dir, genomes_to_keep)
+            return downloadFiles(tmp_dir, genomes_to_keep), True
         else:
             #download all files
-            return downloadFiles(tmp_dir, issl_dict.keys())
+            return downloadFiles(tmp_dir, issl_dict.keys()), False
 
 #--------------
 # MAIN
@@ -205,7 +205,7 @@ def lambda_handler(event, context):
     message = None
     
     # SQS receipt handles
-    ReceiptHandles = []
+    ReceiptHandles = {}
     
     print(event)
 
@@ -264,8 +264,10 @@ def lambda_handler(event, context):
             'Seq20'     : seq20,
             'Score'     : None,
         }
-        # Keep track of messages in batch for removal at later stage
-        ReceiptHandles.append(record['receiptHandle'])
+
+        # Keep track of messages in batch for removal at later stage 
+        ReceiptHandles[jobToGenomeMap[jobId]] = ReceiptHandles.get(jobToGenomeMap[jobId], [])
+        ReceiptHandles[jobToGenomeMap[jobId]].append(record['receiptHandle'])
     #print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
     
     #-----------------------------------
@@ -277,22 +279,33 @@ def lambda_handler(event, context):
     #'genome2': {'seq3': {}, 'seq4':{} } 
     # }
     #ReceiptHandles = ['dsdsdds', 'sdssd', 'sdsdsdsd']  
+    #NEW-ReceiptHandles = {'GCA_004027125.1': ['dsdsdds', 'sdssd'], 'GCA_947508005.1': ['sdsdsdsd']}
 
     #get temp folder to download the issl files into
     tmp_dir = get_tmp_dir()
-    #determine if local storage can download required issl files
-    downloadInfo = downloadIsslFiles(targetsToScorePerGenome, tmp_dir)
-    #remove genome from scoring contentions if it was not downloaded 
-    files_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloadInfo)]
-    print("Files to remove:" + str(files_to_remove))
-    for file in files_to_remove:
-        targetsToScorePerGenome.pop(file, "None")
+    #determine if local storage can download required issl files and remove unnecessary details if need be
+    downloadInfo, skip_flag = downloadIsslFiles(targetsToScorePerGenome, tmp_dir)
+    if (skip_flag):
+        genomes_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloadInfo)]
+        for accession in genomes_to_remove:
+            targetsToScorePerGenome.pop(accession)
+            ReceiptHandles.pop(accession)
+    #translate dictionary into list of receipts
+    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
+    
 
-    #updated list
-    print(targetsToScorePerGenome)
 
     #Move receipts that are to be moved to DLQ
-    
+    #https://stackoverflow.com/questions/53807007/how-do-i-return-a-message-back-to-sqs-from-lambda-trigger
+    #I can delete the receipts expected to be removed. The rest will utilise a visibility timeout 
+    #to re-add into queue at a later date
+    print(targetsToScorePerGenome)
+    print(ReceiptHandles)
+
+    #MAX TIME at 2 minutes currently
+    # visibility timeout of 140 seconds seems appropriate
+
+
 
     #-------------------------------
     # SCORING
@@ -300,10 +313,8 @@ def lambda_handler(event, context):
 
     # Next iteration - for each genome, score its target sequences
     for genome in targetsToScorePerGenome:
-
         # key: genome, value: list of dict
         targetsScored = CalcIssl(targetsToScorePerGenome[genome], downloadInfo[genome]['ISSL_FILE_PATH'])
-    
         # now update the database with scores
         for key in targetsScored:
             result = targetsScored[key]
@@ -326,6 +337,7 @@ def lambda_handler(event, context):
     # REMOVAL FROM QUEUE
     #------------------------------
     # remove messages from the SQS queue. Max 10 at a time.
+
     for i in range(0, len(ReceiptHandles), 10):
         toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
         response = sqs_client.delete_message_batch(
