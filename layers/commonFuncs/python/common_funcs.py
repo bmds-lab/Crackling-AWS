@@ -341,10 +341,25 @@ def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
     
     return set_job_table(dynamoDbClient, tableName, updateCompletedTasks, jobID)
 
+# Thread safe function too set the total number of tasks (to be completed) in jobs table
+def set_task_finished(dynamoDbClient, tableName, jobID):
+    set_task_total(dynamoDbClient, tableName, jobID, "Completed")
+
 
 # check if all of a job's tasks are completed. Takes an entry form the jobs table 
 # as input (which allows data returned from "update_task_counter" to be piped in)
-def spawn_notification_if_complete(job,notification_queue_url):
-    if job["CompletedTasks"] >= (job["TotalTasks"] - 1) and job["TotalTasks"] > 0:
+def spawn_notification_if_complete(dynamoDbClient, tableName,job,notification_queue_url):
+    # Try and parse TotalTasks as int to confirm that job isn't "creating" or "completed"
+    try:
+        int(job["TotalTasks"])
+    except e:
+        print(f"Job not initialized or is already completed. Job details:\n{job}")
+        return
+    
+    # check if all tasks are completed
+    if job["CompletedTasks"] >= (job["TotalTasks"] - 1):
         print("All tasks complete, spawning a notification lambda")
         sendSQS(notification_queue_url,job["JobID"])
+
+        # mark job as finished
+        set_task_finished(dynamoDbClient, tableName, job["JobID"])

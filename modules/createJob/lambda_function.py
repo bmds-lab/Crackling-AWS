@@ -65,7 +65,7 @@ def lambda_handler(event, context):
     taskTrackingTable.put_item(
         Item={
             'JobID' : jobid,
-            'TotalTasks' : -1,
+            'TotalTasks' : "Creating",
             'CompletedTasks' : 0,
             'Version': 0
         }

@@ -10,7 +10,7 @@ EMAIL_SUBJECT = f"test" #f"Crackling Query Complete | {job['Genome']}"
 CHARSET = "UTF-8" # The character encoding for the email.
 EMAIL_HEADER = '''
     <style>
-    table {
+    jobsTable {
     font-family: arial, sans-serif;
     border-collapse: collapse;
     width: 100%;
@@ -29,7 +29,8 @@ EMAIL_HEADER = '''
 
 # connect to DYDB
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(JOBS_TABLE)
+jobsTable = dynamodb.Table(JOBS_TABLE)
+tasksTable = dynamodb.Table(TASKS_TABLE)
 
 # connect to SES
 ses = boto3.client('ses',region_name="ap-southeast-2")
@@ -40,8 +41,8 @@ def lambda_handler(event, context):
 
         jobID = json.loads(record['body'])['JobID']
 
-        #get email address from jobs table
-        job = table.get_item(Key={"JobID" : str(jobID)})['Item']
+        #get email address from jobs jobsTable
+        job = jobsTable.get_item(Key={"JobID" : str(jobID)})['Item']
 
         toEmail = job["Email"]
 
@@ -55,7 +56,7 @@ def lambda_handler(event, context):
         <br>
         Your Crackling Query for Genome {job["Genome"]} is complete. Please find the results <a href="{FRONTEND_URL}">here</a><br>
         Job Information:<br>
-        <table>
+        <jobsTable>
         <tr>
             <th>Time</th>
             <th>Genome</th>
@@ -100,6 +101,3 @@ def lambda_handler(event, context):
         else:
             print("Email sent! Message ID:"),
             print(response['MessageId'])
-
-
-lambda_handler()
