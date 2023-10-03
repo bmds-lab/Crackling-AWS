@@ -60,6 +60,7 @@
 					console.log(JSON.stringify({
 							'sequence' 	: $('#sequence').val(),
 							'genome'	: $('#genome').val()
+							'email'	: $('#email').val()
 						}))
 				
 					$.ajax({
@@ -67,6 +68,7 @@
 						data: JSON.stringify({
 							'sequence' 	: $('#sequence').val(),
 							'genome'	: $('#genome').val()
+							'email'	: $('#email').val()
 						}), 
 						type: "POST", 
 						contentType: "application/json",
@@ -233,6 +235,11 @@
 							<div class="input-field col s12">
 								<textarea id="genome" name="genome" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste Your NCBI genome accession here">GCA_000482205.1</textarea>
 								<label for="genome">Genome Accession</label>
+							</div>
+						</br>
+							<div class="input-field col s12">
+								<textarea id="email" name="email" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Enter email address to recieve notification upon job completion"></textarea>
+								<label for="email">Email</label>
 							</div>
 							<div>
 							<a href="https://www.ncbi.nlm.nih.gov/genome/browse#!/overview/">Link: NCBI genome browser</a>
