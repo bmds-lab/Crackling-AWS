@@ -198,7 +198,7 @@ def lambda_handler(event, context):
     job = update_task_counter(dynamodb, task_tracking_table_name, jobId, 1)
 
     #notify user if job is completed
-    spawn_notification_if_complete(job,notification_queue_url)
+    spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
 
     
     return (event)

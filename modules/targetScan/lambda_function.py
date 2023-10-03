@@ -160,7 +160,7 @@ def lambda_handler(event, context):
     job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
 
     #just in case by some bizare circumstances target scan finishes after ISSL/Consensus, check if all jobs are completed
-    spawn_notification_if_complete(job, NOTIFICATION_SQS)
+    spawn_notification_if_complete(dynamodb, TASK_TRACKING_TABLE, job, NOTIFICATION_SQS)
 
         #print('Processed INSERT event for {}.'.format(jobid))
         

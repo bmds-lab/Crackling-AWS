@@ -44,6 +44,11 @@ def lambda_handler(event, context):
             return return_http_json(400, 'If specified, sequence must not be empty.', ['sequence'])
         elif len(sequence) > int(MAX_SEQ_LENGTH):
             return return_http_json(400, f'The specified sequence is too long (max length = {MAX_SEQ_LENGTH})', ['sequence'])
+        
+    if 'email' in job_request:
+        email = job_request['email'].replace('\r\n', '').replace('\r', '').replace('\n', '').replace(' ', '')
+    else:
+        email = None
 
     genome = job_request['genome']
 
@@ -57,7 +62,7 @@ def lambda_handler(event, context):
             'DateTime' : int(time()),
             'DateTimeHuman' : str(datetime.now()),
             'Genome' : genome,
-            'Email' : "mattias.winsen@outlook.com"
+            'Email' : email
         }
     )
 
