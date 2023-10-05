@@ -29,7 +29,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-v2-S3"
+version = "-Dev-v3-S3"
 availabilityZone = "ap-southeast-2a"
 
 class CracklingStack(Stack):
@@ -252,10 +252,9 @@ class CracklingStack(Stack):
         )
         sqsIssl = sqs_.Queue(self, "sqsIssl", 
             receive_message_wait_time=Duration.seconds(20),
-            #5/10/23 - issl lambda takes 200 seconds in most intensive scenario @630MB fasta file
-            visibility_timeout=Duration.minutes(6),
-            #duration enough for three retries
-            retention_period=Duration.minutes(20)
+            visibility_timeout=duration,
+            #duration enough for two retries
+            retention_period=Duration.minutes(30)
         )
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
