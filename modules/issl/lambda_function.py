@@ -23,7 +23,7 @@ s3_log_bucket = os.environ['LOG_BUCKET']
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
-#The max size is 9500MB
+#Set max size of 9500MB to allow for scoring operations
 MAX_EPHEMERAL_STORAGE_SIZE = 9500
 #byte -> megabyte magnitude
 BYTE_TO_MB_DIVIDER = 1048576
@@ -71,35 +71,23 @@ def CalcIssl(targets, genome_issl_file):
     return targets
     
 
-
 #----------------------
-# HELPER
+# HELPER FUNCS
 # ----------------------
 
-def s3_to_tmp(tmp_dir, accession):
-    download_info = {}
-    expected_file = f"{accession}.issl"
-    #store fasta file in lambda's local storage from s3
-    tmp_dir_issl = f"{tmp_dir}/{expected_file}"
-    s3_destination_path = f"{accession}/issl"
-    s3_resource.meta.client.download_file(s3_bucket, f"{s3_destination_path}/{expected_file}", tmp_dir_issl)
-    #recording path information
-    download_info['ISSL_FILE_PATH'] = tmp_dir_issl
-    return download_info
-
-#Function creates dictionary to store Size and Length to make decision at future point
-def getIsslInfo(issl_genomes, targetsToScorePerGenome):
+#Function to store number of targets and .issl file size by genome
+def getGenomeBatchData(targetsToScorePerGenome):
     output = {}
-    for genome in issl_genomes:
+    for genome in targetsToScorePerGenome.keys():
         info = {}
-        key = f"{genome}/issl/{genome}.issl"
-        info['Size'] = s3_get_file_size(s3_client, s3_bucket, key) / BYTE_TO_MB_DIVIDER
         info['Length'] = len(targetsToScorePerGenome[genome])
+        s3_source_path = f"{genome}/issl/{genome}.issl"
+        info['Size'] = s3_get_file_size(s3_client, s3_bucket, s3_source_path) / BYTE_TO_MB_DIVIDER
         output[genome] = info
     return output
 
-#Function checks whether all issl files in batch can be downloaded into ephemeral storage
-def canStoreAll(issl_dict):
+#Function to reduce by size of batch genome list and compare with max size
+def canLambdaStore(issl_dict):
     totalSize = 0
     for genome in issl_dict.keys():
         totalSize += issl_dict[genome]['Size']
@@ -107,86 +95,58 @@ def canStoreAll(issl_dict):
         return False
     return True
 
-#returns the genome that fits "Length" (number of targets) criteria
-def getOptimalChoice(keys, issl_dict):
-    largestLength = 0
-    largestLengthSize = 0
-    largestLengthGenome = ""
-    #algorithm to maximise best option based on len and genome size
-    for genome in keys:
-        genome_length = issl_dict[genome]['Length']
-        genome_size = issl_dict[genome]['Size']
-        #swap if previous genome had less targets
-        if (largestLength < genome_length):
-            #new largest values
-            largestLength = genome_length
-            largestLengthSize = genome_size
-            largestLengthGenome = genome
-        #the previous genome has same amount of targets
-        elif (largestLength == genome_length):
-            #swap if the matched genome has larger size
-            if (largestLengthSize < genome_size):
-                #new largest values
-                largestLength = genome_length
-                largestLengthSize = genome_size
-                largestLengthGenome = genome
-    
-    return largestLengthGenome, largestLength, largestLengthSize
-
-#returns list of genomes that best fit and do not over exceed local storage
+#returns list of genomes that fit criteria and do not over exceed local storage
 def determineGenomesToKeep(issl_dict):
+    # sort dictionary by criteria: max length first, then by max size in case of match
+    priorityListGenomes = sorted(issl_dict, key=lambda x: (issl_dict[x]["Length"], issl_dict[x]["Size"]), reverse=True)
+    # keep track of memory to download
     memory_used = 0
-    chosenGenomes = []
-    keys = issl_dict.keys()
-    keys_len = len(keys)
-    count = 0
-    while (memory_used <= MAX_EPHEMERAL_STORAGE_SIZE and count < keys_len):
-        genome, _, size = getOptimalChoice(keys, issl_dict)
-        expected_memory_used = memory_used + size 
-        if (expected_memory_used < MAX_EPHEMERAL_STORAGE_SIZE):
-            chosenGenomes.append(genome)
-            memory_used = expected_memory_used
-            issl_dict.pop(genome, "None")
+    # output list constrained by total memory
+    downloadListGenomes = []
+    for genome in priorityListGenomes:
+        total_memory = memory_used + issl_dict[genome]["Size"]
+        if (total_memory < MAX_EPHEMERAL_STORAGE_SIZE):
+            downloadListGenomes.append(genome)
+            memory_used = total_memory
         else:
-            print(f"{genome} exceeds available storage. Added to removal list.")
-            issl_dict.pop(genome, 'None')
-        count += 1
-    return chosenGenomes
+            print(f"{genome} exceeds available storage. To be excluded from download list")
+    return downloadListGenomes
 
-def downloadFiles(tmp_dir, list_to_download):
+def s3_to_tmp(tmp_dir, accession):
+    download_info = {}
+    expected_file = f"{accession}.issl"
+
+    #path locs
+    s3_source_path = f"{accession}/issl/{expected_file}"
+    tmp_download_path = f"{tmp_dir}/{expected_file}" 
+
+    s3_resource.meta.client.download_file(s3_bucket, s3_source_path, tmp_download_path)
+    
+    download_info['ISSL_FILE_PATH'] = tmp_download_path
+    return download_info
+
+def sequentialGenomeDownload(tmp_dir, list_to_download):
     genomeDownloadInfo = {}
     for genome in list_to_download:
         genomeDownloadInfo[genome] = s3_to_tmp(tmp_dir, genome)
     return genomeDownloadInfo
 
 def downloadIsslFiles(targetsToScorePerGenome, tmp_dir):
-    #genomes in batch
-    issl_genomes = list(targetsToScorePerGenome.keys())
-    issl_len = len(issl_genomes)
+    genomes_in_batch = list(targetsToScorePerGenome.keys())
     #empty batch
-    if (issl_len <= 0):
+    if (len(genomes_in_batch) <= 0):
         sys.exit('Failure - No targets required to score')
-    #single genome batch
-    elif (issl_len == 1):
-        genome = issl_genomes[0]
-        s3_destination_path = f"{genome}/issl"
-        if not files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, [genome+".issl"]):
-            sys.exit('Failure - The required issl file is missing')
-        return downloadFiles(tmp_dir, [genome]), False
-    #multi-genome batch
-    else:
-        if not issl_files_exist_s3(s3_client, s3_bucket, issl_genomes):
-            sys.exit('Failure - The required issl files are missing')
-        
-        issl_dict = getIsslInfo(issl_genomes, targetsToScorePerGenome)
+    if not issl_files_exist_s3(s3_client, s3_bucket, genomes_in_batch):
+        sys.exit('Failure - The required issl files are missing')
 
-        if not canStoreAll(issl_dict):
-            genomes_to_keep = determineGenomesToKeep(issl_dict)
-            #download files that fit criteria
-            return downloadFiles(tmp_dir, genomes_to_keep), True
-        else:
-            #download all files
-            return downloadFiles(tmp_dir, issl_dict.keys()), False
+    genomes_batch_info = getGenomeBatchData(targetsToScorePerGenome)
+    #download genomes that fit criteria
+    if not canLambdaStore(genomes_batch_info):
+        genomes_to_download = determineGenomesToKeep(genomes_batch_info)
+        return sequentialGenomeDownload(tmp_dir, genomes_to_download), True
+    #download all genomes
+    else:
+        return sequentialGenomeDownload(tmp_dir, genomes_in_batch), False
 
 #--------------
 # MAIN
@@ -247,7 +207,6 @@ def lambda_handler(event, context):
                 store_log(context, genome, jobId)
             
             # Error - Empty fetched result from dynamodb
-
             else:
                 print(f'No matching JobID: {jobId}???')
                 ReceiptHandles.append(record['receiptHandle'])
@@ -274,38 +233,22 @@ def lambda_handler(event, context):
     #DETERMINING AVAILABLE SPACE
     #------------------------------------
 
-    #targetsToScorePerGenome = {
-    #'genome1': {'seq1': {}, 'seq2':{} },
-    #'genome2': {'seq3': {}, 'seq4':{} } 
-    # }
-    #ReceiptHandles = ['dsdsdds', 'sdssd', 'sdsdsdsd']  
-    #NEW-ReceiptHandles = {'GCA_004027125.1': ['dsdsdds', 'sdssd'], 'GCA_947508005.1': ['sdsdsdsd']}
-
     #get temp folder to download the issl files into
     tmp_dir = get_tmp_dir()
     #determine if local storage can download required issl files and remove unnecessary details if need be
-    downloadInfo, skip_flag = downloadIsslFiles(targetsToScorePerGenome, tmp_dir)
+    downloaded_genomes, skip_flag = downloadIsslFiles(targetsToScorePerGenome, tmp_dir)
     if (skip_flag):
-        genomes_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloadInfo)]
+        genomes_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloaded_genomes)]
+        #remove from scoring and sqs deletion
         for accession in genomes_to_remove:
             targetsToScorePerGenome.pop(accession)
             ReceiptHandles.pop(accession)
-    #translate dictionary into list of receipts
-    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
-    
 
-
-    #Move receipts that are to be moved to DLQ
-    #https://stackoverflow.com/questions/53807007/how-do-i-return-a-message-back-to-sqs-from-lambda-trigger
-    #I can delete the receipts expected to be removed. The rest will utilise a visibility timeout 
-    #to re-add into queue at a later date
     print(targetsToScorePerGenome)
+
+    #dictionary into list
+    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
     print(ReceiptHandles)
-
-    #MAX TIME at 2 minutes currently
-    # visibility timeout of 140 seconds seems appropriate
-
-
 
     #-------------------------------
     # SCORING
@@ -314,7 +257,7 @@ def lambda_handler(event, context):
     # Next iteration - for each genome, score its target sequences
     for genome in targetsToScorePerGenome:
         # key: genome, value: list of dict
-        targetsScored = CalcIssl(targetsToScorePerGenome[genome], downloadInfo[genome]['ISSL_FILE_PATH'])
+        targetsScored = CalcIssl(targetsToScorePerGenome[genome], downloaded_genomes[genome]['ISSL_FILE_PATH'])
         # now update the database with scores
         for key in targetsScored:
             result = targetsScored[key]

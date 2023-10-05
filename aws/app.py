@@ -238,7 +238,7 @@ class CracklingStack(Stack):
         "$LAMBDA_RUNTIME_DIR/lib:$LAMBDA_TASK_ROOT:$LAMBDA_TASK_ROOT/lib:/opt/lib")
         path = "/usr/local/bin:/usr/bin/:/bin:/opt/bin"
         duration = Duration.minutes(15)
-        
+
         # -> SQS queues
         sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
             receive_message_wait_time=Duration.seconds(1),
@@ -251,9 +251,11 @@ class CracklingStack(Stack):
             retention_period=duration
         )
         sqsIssl = sqs_.Queue(self, "sqsIssl", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
+            receive_message_wait_time=Duration.seconds(20),
+            #5/10/23 - issl lambda takes 200 seconds in most intensive scenario @630MB fasta file
+            visibility_timeout=Duration.minutes(6),
+            #duration enough for three retries
+            retention_period=Duration.minutes(20)
         )
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
@@ -394,7 +396,7 @@ class CracklingStack(Stack):
             "mapLdaConsesusSqsConsensus",
             event_source_arn=sqsConsensus.queue_arn,
             batch_size=100,
-            max_batching_window=Duration.seconds(1)
+            max_batching_window=Duration.seconds(10)
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
 
@@ -427,7 +429,8 @@ class CracklingStack(Stack):
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
-            batch_size=10
+            batch_size=10, 
+            max_batching_window=Duration.seconds(1)
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
