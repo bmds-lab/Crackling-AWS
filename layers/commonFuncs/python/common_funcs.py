@@ -352,7 +352,7 @@ def spawn_notification_if_complete(dynamoDbClient, tableName,job,notification_qu
     # Try and parse TotalTasks as int to confirm that job isn't "creating" or "completed"
     try:
         int(job["TotalTasks"])
-    except e:
+    except:
         print(f"Job not initialized or is already completed. Job details:\n{job}")
         return
     

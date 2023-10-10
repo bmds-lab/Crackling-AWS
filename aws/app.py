@@ -30,7 +30,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-2-v4"
+version = "-Dev-2-v5"
 availabilityZone = "ap-southeast-2a"
 efs_lambda_access_point= "efs"
 efs_mount_path = f"/mnt/{efs_lambda_access_point}"
@@ -539,12 +539,25 @@ class CracklingStack(Stack):
             },
         )
         sqsNotification.grant_consume_messages(lambdaNotifier)
-        ddbJobs.grant_stream_read(lambdaNotifier)
+        ddbJobs.grant_read_write_data(lambdaNotifier)
         lambdaNotifier.add_event_source_mapping(
             "mapLdaNotifierSqsNotification",
             event_source_arn=sqsNotification.queue_arn,
             batch_size=1
         )
+        #create role for SES access
+        ses_policy_statement = iam_.PolicyStatement(
+            effect=iam_.Effect.ALLOW,
+            actions=[
+                "ses:SendEmail",
+                "ses:SendRawEmail",
+                # Add other SES actions you need here
+            ],
+            resources=["*"],  # You can restrict this to specific SES resources if needed
+        )
+
+        # Add the SES policy statement to the Lambda function's role
+        lambdaNotifier.role.add_to_policy(ses_policy_statement)
 
 
         ### API

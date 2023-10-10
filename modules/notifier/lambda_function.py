@@ -5,7 +5,7 @@ JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 FRONTEND_URL = os.getenv('FRONTEND_URL')
 
 # Defines for email
-FROM_EMAIL = "notification@crackling.com" # change this to change the address the email is sent from
+FROM_EMAIL = "email@placeholder.com" # SET EMAIL ADDRESS HERE
 EMAIL_SUBJECT = f"test" #f"Crackling Query Complete | {job['Genome']}"
 CHARSET = "UTF-8" # The character encoding for the email.
 EMAIL_HEADER = '''
