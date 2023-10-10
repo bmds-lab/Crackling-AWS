@@ -30,7 +30,7 @@ from aws_cdk import (
 )
 
 
-version = "-Dev-v3-S3"
+version = "-Dev-Cloudfront"
 availabilityZone = "ap-southeast-2a"
 
 class CracklingStack(Stack):
@@ -80,12 +80,11 @@ class CracklingStack(Stack):
             retain_on_delete=False
         )
 
-        origin_domain = s3Frontend.bucket_website_url 
         CracklingDistribution = cloudfront_.Distribution(self, "CracklingCloudfrontDistribution",
-            default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(origin_domain))
+            default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(s3Frontend))
         )
-        cloudfront_url = CracklingDistribution.distributionDomainName
-        cdk.CfnOutput(self, "S3_Frontend_URL", value=cloudfront_url)
+        cloudfront_url = CracklingDistribution.distribution_domain_name
+        cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
 
         
         # New S3 Bucket for Genome File storage
