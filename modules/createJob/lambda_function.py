@@ -8,12 +8,14 @@ from common_funcs import *
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 
 s3_log_bucket = os.environ['LOG_BUCKET']
 s3_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(JOBS_TABLE)
+jobTable = dynamodb.Table(JOBS_TABLE)
+taskTrackingTable = dynamodb.Table(TASK_TRACKING_TABLE)
 
 headers = {
     'Access-Control-Allow-Headers'  : 'Content-Type',
@@ -42,18 +44,35 @@ def lambda_handler(event, context):
             return return_http_json(400, 'If specified, sequence must not be empty.', ['sequence'])
         elif len(sequence) > int(MAX_SEQ_LENGTH):
             return return_http_json(400, f'The specified sequence is too long (max length = {MAX_SEQ_LENGTH})', ['sequence'])
+        
+    if 'email' in job_request:
+        email = job_request['email'].replace('\r\n', '').replace('\r', '').replace('\n', '').replace(' ', '')
+    else:
+        email = None
 
     genome = job_request['genome']
 
     jobid = str(uuid.uuid4())
 
-    table.put_item(
+    # add to jobs table
+    jobTable.put_item(
         Item={
             'JobID' : jobid,
             'Sequence' : sequence,
             'DateTime' : int(time()),
             'DateTimeHuman' : str(datetime.now()),
-            'Genome' : genome
+            'Genome' : genome,
+            'Email' : email
+        }
+    )
+
+    # add to task tracking table
+    taskTrackingTable.put_item(
+        Item={
+            'JobID' : jobid,
+            'TotalTasks' : "Creating",
+            'CompletedTasks' : 0,
+            'Version': 0
         }
     )
     

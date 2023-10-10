@@ -29,6 +29,7 @@ from aws_cdk import (
 
 
 
+
 version = "-Dev-v3-S3"
 availabilityZone = "ap-southeast-2a"
 
@@ -142,6 +143,14 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
+        # Stores information on the number of tasks completed by each job (which is used in notifcation system to track job completeness)
+        ddbTaskTracking = ddb_.Table(self, "ddbTaskTracking",
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
+            partition_key=ddb_.Attribute(name="JobID", type=ddb_.AttributeType.STRING),
+            stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
+        )
+
         ### DynamoDB table for storing targets.
         # The sort key enables quicker indexing.
         ddbTargets = ddb_.Table(self, "ddbTargets",
@@ -188,7 +197,7 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        ### Lambda layer contaiing shared libraries for compiled binaries
+        ### Lambda layer containing shared libraries for compiled binaries
         lambdaLayerLib = lambda_.LayerVersion(self, "lib",
             code=lambda_.Code.from_asset("../layers/lib"),
             removal_policy=RemovalPolicy.DESTROY,
@@ -210,6 +219,53 @@ class CracklingStack(Stack):
             code=lambda_.Code.from_asset("../layers/isslCreation"),
             removal_policy=RemovalPolicy.DESTROY
         )
+        
+        #Variables used over many lambdas
+        ld_library_path = ("/opt/libs:/lib64:/usr/lib64:$LAMBDA_RUNTIME_DIR:"
+        "$LAMBDA_RUNTIME_DIR/lib:$LAMBDA_TASK_ROOT:$LAMBDA_TASK_ROOT/lib:/opt/lib")
+        path = "/usr/local/bin:/usr/bin/:/bin:/opt/bin"
+        duration = Duration.minutes(15)
+
+        # -> SQS queues
+        sqsIsslCreation = sqs_.Queue(
+            self,
+            "sqsIsslCreation", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        sqsTargetScan = sqs_.Queue(
+            self,
+            "sqsTargetScan", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+
+        sqsIssl = sqs_.Queue(self, "sqsIssl", 
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            #duration enough for two retries
+            retention_period=Duration.minutes(30)
+        )
+        ### SQS queue for evaluating guide efficiency
+        # The TargetScan lambda function adds guides to this queue for processing
+        # The consensus lambda function processes items in this queue
+        sqsConsensus = sqs_.Queue(
+            self,
+            "sqsConsensus", 
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+
+        sqsNotification = sqs_.Queue(
+            self,
+            "sqsNotification", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+            )
 
         ### Lambda function that acts as the entry point to the application.
         # This function creates a record in the DynamoDB jobs table.
@@ -227,44 +283,14 @@ class CracklingStack(Stack):
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
         ddbJobs.grant_read_write_data(lambdaCreateJob)
+        ddbTaskTracking.grant_read_write_data(lambdaCreateJob)
         s3Log.grant_read_write(lambdaCreateJob)
         
-        #Variables used over many lambdas
-        ld_library_path = ("/opt/libs:/lib64:/usr/lib64:$LAMBDA_RUNTIME_DIR:"
-        "$LAMBDA_RUNTIME_DIR/lib:$LAMBDA_TASK_ROOT:$LAMBDA_TASK_ROOT/lib:/opt/lib")
-        path = "/usr/local/bin:/usr/bin/:/bin:/opt/bin"
-        duration = Duration.minutes(15)
-
-        # -> SQS queues
-        sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
-        )
-        sqsTargetScan = sqs_.Queue(self, "sqsTargetScan", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
-        )
-        sqsIssl = sqs_.Queue(self, "sqsIssl", 
-            receive_message_wait_time=Duration.seconds(20),
-            visibility_timeout=duration,
-            #duration enough for two retries
-            retention_period=Duration.minutes(30)
-        )
-        ### SQS queue for evaluating guide efficiency
-        # The TargetScan lambda function adds guides to this queue for processing
-        # The consensus lambda function processes items in this queue
-        sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
-            receive_message_wait_time=Duration.seconds(20),
-            visibility_timeout=duration,
-            retention_period=duration
-        )
-
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_8,
@@ -351,17 +377,22 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
+                'JOBS_TABLE' : ddbJobs.table_name,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
-        
+        sqsNotification.grant_send_messages(lambdaTargetScan)
         s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
+        ddbTaskTracking.grant_read_write_data(lambdaTargetScan)
+        ddbJobs.grant_read_write_data(lambdaTargetScan)
         sqsConsensus.grant_send_messages(lambdaTargetScan)
         sqsIssl.grant_send_messages(lambdaTargetScan)
         lambdaTargetScan.add_event_source_mapping(
@@ -376,19 +407,23 @@ class CracklingStack(Stack):
         lambdaConsensus = lambda_.Function(self, "consensus", 
             runtime=lambda_.Runtime.PYTHON_3_8,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            # insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/consensus"),
-            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold],
+            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'TARGETS_TABLE' : ddbTargets.table_name,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
+        sqsNotification.grant_send_messages(lambdaConsensus)
         s3Log.grant_read_write(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
@@ -398,6 +433,8 @@ class CracklingStack(Stack):
             max_batching_window=Duration.seconds(10)
         )
         ddbTargets.grant_read_write_data(lambdaConsensus)
+        ddbTaskTracking.grant_read_write_data(lambdaConsensus)
+        ddbJobs.grant_read_write_data(lambdaConsensus)
 
 
         ### Lambda function that assesses guide specificity using ISSL.
@@ -415,15 +452,18 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
+                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
+        sqsNotification.grant_send_messages(lambdaIssl)
 
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
@@ -432,10 +472,54 @@ class CracklingStack(Stack):
             max_batching_window=Duration.seconds(1)
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
+        ddbTaskTracking.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
         s3Genome.grant_read_write(lambdaIssl)
         s3Log.grant_read_write(lambdaIssl)
         lambdaIssl.add_to_role_policy(lambdaS3AccessPointIAM)
+
+
+        # Lambda Notifier
+        # Consumes message from notification que
+        # sends email to user
+        lambdaNotifier = lambda_.Function(self, "Notifier", 
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/notifier"),
+            layers=[lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            timeout= duration,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'JOBS_TABLE' : ddbJobs.table_name,
+                'BUCKET' : s3GenomeAccess.attr_arn,
+                'PATH' : path,
+                'LOG_BUCKET': s3Log.bucket_name,
+                'FRONTEND_URL': s3Frontend.bucket_website_url
+            },
+        )
+        sqsNotification.grant_consume_messages(lambdaNotifier)
+        ddbJobs.grant_read_write_data(lambdaNotifier)
+        lambdaNotifier.add_event_source_mapping(
+            "mapLdaNotifierSqsNotification",
+            event_source_arn=sqsNotification.queue_arn,
+            batch_size=1
+        )
+        #create role for SES access
+        ses_policy_statement = iam_.PolicyStatement(
+            effect=iam_.Effect.ALLOW,
+            actions=[
+                "ses:SendEmail",
+                "ses:SendRawEmail",
+                # Add other SES actions you need here
+            ],
+            resources=["*"],  # You can restrict this to specific SES resources if needed
+        )
+
+        # Add the SES policy statement to the Lambda function's role
+        lambdaNotifier.role.add_to_policy(ses_policy_statement)
+
 
         ### API
         # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
