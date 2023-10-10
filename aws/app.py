@@ -24,10 +24,10 @@ from aws_cdk import (
     aws_iam as iam_,
     aws_s3 as s3_,
     aws_s3_deployment as s3d_,
+    aws_cloudfront as cloudfront_,
+    aws_cloudfront_origins as origins_,
     aws_s3_notifications as s3_notify,
 )
-
-
 
 
 version = "-Dev-v3-S3"
@@ -79,7 +79,14 @@ class CracklingStack(Stack):
             # destination_key_prefix="web/static",
             retain_on_delete=False
         )
-        cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
+
+        origin_domain = s3Frontend.bucket_website_url 
+        CracklingDistribution = cloudfront_.Distribution(self, "CracklingCloudfrontDistribution",
+            default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(origin_domain))
+        )
+        cloudfront_url = CracklingDistribution.distributionDomainName
+        cdk.CfnOutput(self, "S3_Frontend_URL", value=cloudfront_url)
+
         
         # New S3 Bucket for Genome File storage
         s3Genome = s3_.Bucket(self,
@@ -496,7 +503,7 @@ class CracklingStack(Stack):
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'PATH' : path,
                 'LOG_BUCKET': s3Log.bucket_name,
-                'FRONTEND_URL': s3Frontend.bucket_website_url
+                'FRONTEND_URL': cloudfront_url
             },
         )
         sqsNotification.grant_consume_messages(lambdaNotifier)
