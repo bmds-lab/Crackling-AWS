@@ -6,7 +6,10 @@ from boto3.dynamodb.conditions import Key
 from common_funcs import *
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
+JOBS_TABLE = os.getenv('JOBS_TABLE')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
+NOTIFICATION_SQS = os.getenv('NOTIFICATION_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 s3_log_bucket = os.environ['LOG_BUCKET']
 
@@ -78,6 +81,8 @@ def target_iterator(seq):
 
 # Find target sites and add to dictionary, 'candidateTargets'.
 def find_targets(params):
+    taskCounter = 0
+
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
             targetEntry = create_target_entry(params, index, target)
@@ -96,7 +101,10 @@ def find_targets(params):
                     QueueUrl=targetQueue,
                     MessageBody=msg,
                 )
+
+                taskCounter += 1 #increment task counter
                 
+
                 #print(
                 #    index, 
                 #    target,
@@ -104,6 +112,7 @@ def find_targets(params):
                 #    response['ResponseMetadata']['HTTPStatusCode'], 
                 #    msg
                 #)
+    return taskCounter
 
 
 def deleteCandidateTargets(jobid):
@@ -145,7 +154,14 @@ def lambda_handler(event, context):
     
     create_log(s3_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
     
-    find_targets(params) 
+    taskCount = find_targets(params) 
+
+    # set the total number of tasks the job needs to complete
+    job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
+
+    #just in case by some bizare circumstances target scan finishes after ISSL/Consensus, check if all jobs are completed
+    spawn_notification_if_complete(dynamodb, TASK_TRACKING_TABLE, job, NOTIFICATION_SQS)
+
         #print('Processed INSERT event for {}.'.format(jobid))
         
     # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
