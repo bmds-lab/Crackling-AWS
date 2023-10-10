@@ -6,7 +6,7 @@ FRONTEND_URL = os.getenv('FRONTEND_URL')
 
 # Defines for email
 FROM_EMAIL = "email@placeholder.com" # SET EMAIL ADDRESS HERE
-EMAIL_SUBJECT = f"test" #f"Crackling Query Complete | {job['Genome']}"
+EMAIL_SUBJECT = f"Crackling Query Complete"
 CHARSET = "UTF-8" # The character encoding for the email.
 EMAIL_HEADER = '''
     <style>
