@@ -219,7 +219,7 @@ def lambda_handler(event, context):
         seq20 = message['Sequence'][0:20]
 
         # Map guide sequences to genome and prepare dictionary structure for scoring in next iteration
-        targetsToScorePerGenome[jobToGenomeMap[jobId]][seq20] = {
+        targetsToScorePerGenome[jobToGenomeMap[jobId]][message['Sequence']] = {
             'JobID'     : jobId,
             'TargetID'  : message['TargetID'],
             'Seq'       : message['Sequence'],

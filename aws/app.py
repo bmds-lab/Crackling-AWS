@@ -475,7 +475,7 @@ class CracklingStack(Stack):
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10, 
-            max_batching_window=Duration.seconds(1)
+            max_batching_window=Duration.seconds(5)
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTaskTracking.grant_read_write_data(lambdaIssl)
