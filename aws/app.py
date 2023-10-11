@@ -30,7 +30,7 @@ from aws_cdk import (
 
 
 
-version = "-Dev-v3-S3"
+version = "-Dev-4-v2"
 availabilityZone = "ap-southeast-2a"
 
 class CracklingStack(Stack):

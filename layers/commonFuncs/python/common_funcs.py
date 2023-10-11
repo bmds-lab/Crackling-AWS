@@ -402,7 +402,7 @@ def spawn_notification_if_complete(dynamoDbClient, tableName,job,notification_qu
         return
     
     # check if all tasks are completed
-    if job["CompletedTasks"] >= (job["TotalTasks"] - 1):
+    if (job["TotalTasks"]/job["CompletedTasks"]) >= 0.54:
         print("All tasks complete, spawning a notification lambda")
         sendSQS(notification_queue_url,job["JobID"])
 
