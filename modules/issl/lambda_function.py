@@ -154,10 +154,21 @@ def downloadIsslFiles(targetsToScorePerGenome, tmp_dir):
     else:
         return sequentialGenomeDownload(tmp_dir, genomes_in_batch), False
 
+def resendGenomeToSQS(entries):
+    print("Sending back to sqs")
+    for entry in entries:
+        response = sqs_client.send_message(
+            QueueUrl=issl_queue_url,
+            MessageBody=json.dumps(entry),
+        )
+        print(response)
+
+    
 #--------------
 # MAIN
 #--------------
 def lambda_handler(event, context):
+    
     # key: genome, value: list of guides
     targetsToScorePerGenome = {}
     
@@ -173,6 +184,9 @@ def lambda_handler(event, context):
     # SQS receipt handles
     ReceiptHandles = {}
     
+    # SQS message 
+    ReceiptMessages = {}
+    
     print(event)
 
     #-----------------------------
@@ -182,8 +196,8 @@ def lambda_handler(event, context):
     # Create dictionary mapping jobid to genome for all messages in SQS batch
     for record in event['Records']:
         try:
-            message = json.loads(record['body'])
-            message = json.loads(message['default'])
+            body = json.loads(record['body'])
+            message = json.loads(body['default'])
         except e:
             print(f"Exception: {e}")
             continue
@@ -207,6 +221,8 @@ def lambda_handler(event, context):
                 genome = result['Item']['Genome']['S']
                 jobToGenomeMap[jobId] = genome
                 targetsToScorePerGenome[genome] = {}
+                ReceiptMessages[genome] = []
+                
                 print(jobId, genome)
 
                 # Benchmark code
@@ -229,7 +245,10 @@ def lambda_handler(event, context):
             'Seq20'     : seq20,
             'Score'     : None,
         }
-
+        
+        #keep track of message sent by target scan function in case of resending required
+        ReceiptMessages[jobToGenomeMap[jobId]].append(body)
+        
         # Keep track of messages in batch for removal at later stage 
         ReceiptHandles[jobToGenomeMap[jobId]] = ReceiptHandles.get(jobToGenomeMap[jobId], [])
         ReceiptHandles[jobToGenomeMap[jobId]].append(record['receiptHandle'])
@@ -247,15 +266,18 @@ def lambda_handler(event, context):
         genomes_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloaded_genomes)]
         #remove from scoring and sqs deletion
         for accession in genomes_to_remove:
+            #disqualify genome from being scored
             targetsToScorePerGenome.pop(accession)
             ReceiptHandles.pop(accession)
+            #send messages back into queue - there must a retry mechanism in the future
+            messageToResend = ReceiptMessages.pop(accession)
+            resendGenomeToSQS(messageToResend)
+            
+    #dictionary to list
+    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
 
     print(targetsToScorePerGenome)
-
-    #dictionary into list
-    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
-    print(ReceiptHandles)
-
+    
     #-------------------------------
     # SCORING
     #-------------------------------
@@ -306,5 +328,4 @@ def lambda_handler(event, context):
     #notify user if job is completed
     spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
 
-    
     return (event)

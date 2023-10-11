@@ -30,7 +30,7 @@ from aws_cdk import (
 )
 
 
-version = "-Dev-Cloudfront"
+version = "-Dev-Cloudfront-v3"
 availabilityZone = "ap-southeast-2a"
 
 class CracklingStack(Stack):
@@ -469,8 +469,8 @@ class CracklingStack(Stack):
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
+        sqsIssl.grant_send_messages(lambdaIssl)
         sqsNotification.grant_send_messages(lambdaIssl)
-
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
