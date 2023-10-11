@@ -65,17 +65,16 @@ def transToDNA(rna):
     return dna
 
 
-def CalcConsensus(records):
-    rnaFoldResults = _CalcRnaFold(records.keys())
-    
-    for record in records:
-        records[record]['Consensus'] = ','.join([str(int(x)) for x in [
-            _CalcChopchop(record),
-            _CalcMm10db(record, rnaFoldResults[record]['result']),
-            _CalcSgrnascorer(record)
-        ]])
-        
-    return records
+def CalcConsensus(recordsByJobID):
+    for jobid in recordsByJobID.keys():
+        rnaFoldResults = _CalcRnaFold(recordsByJobID[jobid].keys())
+        for record in recordsByJobID[jobid]:
+            recordsByJobID[jobid][record]['Consensus'] = ','.join([str(int(x)) for x in [
+                _CalcChopchop(record),
+                _CalcMm10db(record, rnaFoldResults[record]['result']),
+                _CalcSgrnascorer(record)
+            ]])
+    return recordsByJobID
 
 def _CalcRnaFold(seqs):
     results = {} # as output
@@ -213,11 +212,13 @@ def _CalcSgrnascorer(seq):
 
 def lambda_handler(event, context):
     records = {}
+    recordsByJobID = {}
+    
     ReceiptHandles = []
     print(event)
     for record in event['Records']:
         genome = ""
-        print(record)
+        #print(record)
         try:
             message = json.loads(record['body'])
             genome = json.loads(message['genome'])
@@ -229,47 +230,51 @@ def lambda_handler(event, context):
             print(f'Missing core data to perform off-target scoring: {message}')
             continue
             
-        records[message['Sequence']] = {
-            'JobID'         : message['JobID'],
-            'TargetID'      : message['TargetID'],
-            'Consensus'     : "",
+        if message['JobID'] not in recordsByJobID:
+            recordsByJobID[message['JobID']] = {}
+        
+        recordsByJobID[message['JobID']][message['Sequence']] = {
+          'JobID'         : message['JobID'],
+          'TargetID'      : message['TargetID'],
+          'Consensus'     : "",
         }
         
         #METRIC CODE
 
         #log name based on request_id, a unique identifier
-        output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
+        #output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
         #store lambda id for future logging
-        create_log(s3_client, s3_log_bucket, context, genome,message['JobID'], output)
+        #create_log(s3_client, s3_log_bucket, context, genome,message['JobID'], output)
     
         ReceiptHandles.append(record['receiptHandle'])
        
     #print(f"Processing {len(records)} guides.")
     
+    print(recordsByJobID)
+    results = CalcConsensus(recordsByJobID)
+    print(results)
 
-    
-    results = CalcConsensus(records)
 
     # track number of tasks completed for each job by counting instances of each jobID
     job_tasks = {}
     
-    for key in results:
-        result = results[key]
-        #print(json.dumps(result['Consensus']))
-        response = TARGETS_TABLE.update_item(
-            Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
-            UpdateExpression='set Consensus = :c',
-            ExpressionAttributeValues={':c': result['Consensus']}
-        )
-
-        # increment task counter for each job
-        if result['JobID'] not in job_tasks:
-            # if job doesnt have an entry, create one
-            job_tasks.update({result['JobID'] : 1})
-        else:
-            job_tasks[result['JobID']] += 1
-
-        #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
+    for jobid in results.keys():
+        for result in results[jobid].values():
+            #print(json.dumps(result['Consensus']))
+            response = TARGETS_TABLE.update_item(
+                Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
+                UpdateExpression='set Consensus = :c',
+                ExpressionAttributeValues={':c': result['Consensus']}
+            )
+        
+            # increment task counter for each job
+            if result['JobID'] not in job_tasks:
+                # if job doesnt have an entry, create one
+                job_tasks.update({result['JobID'] : 1})
+            else:
+                job_tasks[result['JobID']] += 1
+        
+            #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
         
     
     # remove messages from the SQS queue. Max 10 at a time.

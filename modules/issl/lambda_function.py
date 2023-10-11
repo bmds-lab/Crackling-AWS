@@ -68,9 +68,12 @@ def CalcIssl(targets, genome_issl_file):
 
     # Extract the score in scored temp file and insert into dictionary structure to be returned
     with open(tmpScored.name, 'r') as fp:
-        for targetScored in [x.split('\t') for x in fp.readlines()]:
+        lines = [x.split('\t') for x in fp.readlines()]
+        keys = list(targets.keys())
+        for key, targetScored in zip(keys, lines):
+            #include score to key if tmp file has successfully been populated by scoring func
             if len(targetScored) == 2:
-                targets[targetScored[0]]['Score'] = float(targetScored[1].strip())
+                targets[key]['Score'] = float(targetScored[1].strip())
     return targets
     
 
