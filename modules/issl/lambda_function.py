@@ -15,14 +15,12 @@ task_tracking_table_name = os.getenv('TASK_TRACKING_TABLE')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
 notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
-
 #boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
 
 s3_bucket = os.environ['BUCKET']
-s3_log_bucket = os.environ['LOG_BUCKET']
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
@@ -37,12 +35,6 @@ JOBS_TABLE = dynamodb.Table(jobs_table_name)
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
     call(*args, **kwargs)
-    
-def store_log(context, genome, jobId):
-    #log name based on request_id, a unique identifier
-    output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
-    #store lambda id for future logging
-    create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
 
 def CalcIssl(targets, genome_issl_file):
     tmpToScore = tempfile.NamedTemporaryFile('w', delete=False)
@@ -68,9 +60,12 @@ def CalcIssl(targets, genome_issl_file):
 
     # Extract the score in scored temp file and insert into dictionary structure to be returned
     with open(tmpScored.name, 'r') as fp:
-        for targetScored in [x.split('\t') for x in fp.readlines()]:
+        lines = [x.split('\t') for x in fp.readlines()]
+        keys = list(targets.keys())
+        for key, targetScored in zip(keys, lines):
+            #include score to key if tmp file has successfully been populated by scoring func
             if len(targetScored) == 2:
-                targets[targetScored[0]]['Score'] = float(targetScored[1].strip())
+                targets[key]['Score'] = float(targetScored[1].strip())
     return targets
     
 
@@ -151,10 +146,21 @@ def downloadIsslFiles(targetsToScorePerGenome, tmp_dir):
     else:
         return sequentialGenomeDownload(tmp_dir, genomes_in_batch), False
 
+def resendGenomeToSQS(entries):
+    print("Sending back to sqs")
+    for entry in entries:
+        response = sqs_client.send_message(
+            QueueUrl=issl_queue_url,
+            MessageBody=json.dumps(entry),
+        )
+        print(response)
+
+    
 #--------------
 # MAIN
 #--------------
 def lambda_handler(event, context):
+    
     # key: genome, value: list of guides
     targetsToScorePerGenome = {}
     
@@ -170,6 +176,9 @@ def lambda_handler(event, context):
     # SQS receipt handles
     ReceiptHandles = {}
     
+    # SQS message 
+    ReceiptMessages = {}
+    
     print(event)
 
     #-----------------------------
@@ -179,8 +188,8 @@ def lambda_handler(event, context):
     # Create dictionary mapping jobid to genome for all messages in SQS batch
     for record in event['Records']:
         try:
-            message = json.loads(record['body'])
-            message = json.loads(message['default'])
+            body = json.loads(record['body'])
+            message = json.loads(body['default'])
         except e:
             print(f"Exception: {e}")
             continue
@@ -204,10 +213,9 @@ def lambda_handler(event, context):
                 genome = result['Item']['Genome']['S']
                 jobToGenomeMap[jobId] = genome
                 targetsToScorePerGenome[genome] = {}
+                ReceiptMessages[genome] = []
+                
                 print(jobId, genome)
-
-                # Benchmark code
-                store_log(context, genome, jobId)
             
             # Error - Empty fetched result from dynamodb
             else:
@@ -219,14 +227,17 @@ def lambda_handler(event, context):
         seq20 = message['Sequence'][0:20]
 
         # Map guide sequences to genome and prepare dictionary structure for scoring in next iteration
-        targetsToScorePerGenome[jobToGenomeMap[jobId]][seq20] = {
+        targetsToScorePerGenome[jobToGenomeMap[jobId]][message['Sequence']] = {
             'JobID'     : jobId,
             'TargetID'  : message['TargetID'],
             'Seq'       : message['Sequence'],
             'Seq20'     : seq20,
             'Score'     : None,
         }
-
+        
+        #keep track of message sent by target scan function in case of resending required
+        ReceiptMessages[jobToGenomeMap[jobId]].append(body)
+        
         # Keep track of messages in batch for removal at later stage 
         ReceiptHandles[jobToGenomeMap[jobId]] = ReceiptHandles.get(jobToGenomeMap[jobId], [])
         ReceiptHandles[jobToGenomeMap[jobId]].append(record['receiptHandle'])
@@ -244,15 +255,18 @@ def lambda_handler(event, context):
         genomes_to_remove = [item for item in list(targetsToScorePerGenome.keys()) if item not in list(downloaded_genomes)]
         #remove from scoring and sqs deletion
         for accession in genomes_to_remove:
+            #disqualify genome from being scored
             targetsToScorePerGenome.pop(accession)
             ReceiptHandles.pop(accession)
+            #send messages back into queue - there must a retry mechanism in the future
+            messageToResend = ReceiptMessages.pop(accession)
+            resendGenomeToSQS(messageToResend)
+            
+    #dictionary to list
+    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
 
     print(targetsToScorePerGenome)
-
-    #dictionary into list
-    ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
-    print(ReceiptHandles)
-
+    
     #-------------------------------
     # SCORING
     #-------------------------------
@@ -303,5 +317,4 @@ def lambda_handler(event, context):
     #notify user if job is completed
     spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
 
-    
     return (event)

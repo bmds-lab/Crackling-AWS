@@ -13,9 +13,6 @@ INSTANCE_TYPE = os.environ['INSTANCE_TYPE']
 REGION = os.environ['REGION']
 QUEUE = os.environ['QUEUE']
 
-s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
-
 
 def SpawnLambda(dictionary):
     print("Spinning up lambdas for download, bowtie & isslCreation")
@@ -71,11 +68,7 @@ def lambda_handler(event, context):
         metaDataFile = metaDataFile / 1048576
 
         SpawnLambda(dictionary)
-        #Store lambda id for logging purposes
-        create_log(s3_client, s3_log_bucket, context, genome, jobid, 'Scheduler')
     else:
         ChromosomeLength = ChromosomeLength / 1048576
        
         SpawnLambda(dictionary)
-        #Store lambda id for logging purposes
-        create_log(s3_client, s3_log_bucket, context, genome, jobid, 'Scheduler')

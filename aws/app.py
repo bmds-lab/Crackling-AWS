@@ -24,13 +24,15 @@ from aws_cdk import (
     aws_iam as iam_,
     aws_s3 as s3_,
     aws_s3_deployment as s3d_,
+    aws_cloudfront as cloudfront_,
+    aws_cloudfront_origins as origins_,
     aws_s3_notifications as s3_notify,
 )
 
 
 
+version = "-Dev"
 
-version = "-Dev-5"
 availabilityZone = "ap-southeast-2a"
 
 class CracklingStack(Stack):
@@ -79,9 +81,15 @@ class CracklingStack(Stack):
             # destination_key_prefix="web/static",
             retain_on_delete=False
         )
-        cdk.CfnOutput(self, "S3_Frontend_URL", value=s3Frontend.bucket_website_url)
+
+        CracklingDistribution = cloudfront_.Distribution(self, "CracklingCloudfrontDistribution",
+            default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(s3Frontend))
+        )
+        cloudfront_url = CracklingDistribution.distribution_domain_name
+        cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
+
         
-        # New S3 Bucket for Genome File storage
+        # S3 Bucket for Genome File storage
         s3Genome = s3_.Bucket(self,
             "genomeStorage", 
             removal_policy=RemovalPolicy.DESTROY,
@@ -129,9 +137,6 @@ class CracklingStack(Stack):
                 f"{s3GenomeAccess.attr_arn}/object/*"
             ]
         })
-
-        #New S3 Bucket for Log storage
-        s3Log = s3_.Bucket(self, "logStorage")    
 
         ### DynamoDB (ddb) is a key-value store.
         # This table stores jobs for processing
@@ -245,7 +250,6 @@ class CracklingStack(Stack):
         sqsIssl = sqs_.Queue(self, "sqsIssl", 
             receive_message_wait_time=Duration.seconds(20),
             visibility_timeout=duration,
-            #duration enough for two retries
             retention_period=Duration.minutes(30)
         )
         ### SQS queue for evaluating guide efficiency
@@ -283,13 +287,11 @@ class CracklingStack(Stack):
             environment={
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'MAX_SEQ_LENGTH' : '20000',
-                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
-                'LOG_BUCKET': s3Log.bucket_name
+                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name
             }
         )
         ddbJobs.grant_read_write_data(lambdaCreateJob)
         ddbTaskTracking.grant_read_write_data(lambdaCreateJob)
-        s3Log.grant_read_write(lambdaCreateJob)
         
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
@@ -309,8 +311,7 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
+                'PATH' : path
             },
         )
 
@@ -325,7 +326,6 @@ class CracklingStack(Stack):
             starting_position=lambda_.StartingPosition.LATEST
         )
         s3Genome.grant_read_write(lambdaDownloader)   
-        s3Log.grant_read_write(lambdaDownloader)
         lambdaDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
 
 
@@ -344,13 +344,11 @@ class CracklingStack(Stack):
                 'QUEUE' : sqsTargetScan.queue_url,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
+                'PATH' : path
             }
         )
 
         s3Genome.grant_read_write(lambdaIsslCreation)
-        s3Log.grant_read_write(lambdaIsslCreation)
         sqsIsslCreation.grant_consume_messages(lambdaIsslCreation)
         sqsTargetScan.grant_send_messages(lambdaIsslCreation)
         lambdaIsslCreation.add_event_source_mapping(
@@ -383,12 +381,10 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'JOBS_TABLE' : ddbJobs.table_name,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
+                'PATH' : path
             }
         )
         sqsNotification.grant_send_messages(lambdaTargetScan)
-        s3Log.grant_read_write(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
         ddbTaskTracking.grant_read_write_data(lambdaTargetScan)
@@ -419,12 +415,10 @@ class CracklingStack(Stack):
                 'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
-                'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
-                'LOG_BUCKET': s3Log.bucket_name
+                'CONSENSUS_QUEUE' : sqsConsensus.queue_url
             }
         )
         sqsNotification.grant_send_messages(lambdaConsensus)
-        s3Log.grant_read_write(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
             "mapLdaConsesusSqsConsensus",
@@ -458,24 +452,22 @@ class CracklingStack(Stack):
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name
+                'PATH' : path
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
+        sqsIssl.grant_send_messages(lambdaIssl)
         sqsNotification.grant_send_messages(lambdaIssl)
-
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10, 
-            max_batching_window=Duration.seconds(1)
+            max_batching_window=Duration.seconds(5)
         )
         ddbJobs.grant_read_write_data(lambdaIssl)
         ddbTaskTracking.grant_read_write_data(lambdaIssl)
         ddbTargets.grant_read_write_data(lambdaIssl)
         s3Genome.grant_read_write(lambdaIssl)
-        s3Log.grant_read_write(lambdaIssl)
         lambdaIssl.add_to_role_policy(lambdaS3AccessPointIAM)
 
 
@@ -495,8 +487,7 @@ class CracklingStack(Stack):
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'PATH' : path,
-                'LOG_BUCKET': s3Log.bucket_name,
-                'FRONTEND_URL': s3Frontend.bucket_website_url
+                'FRONTEND_URL': cloudfront_url
             },
         )
         sqsNotification.grant_consume_messages(lambdaNotifier)

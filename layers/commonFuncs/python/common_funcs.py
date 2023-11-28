@@ -252,23 +252,6 @@ def files_exist_s3_dir(s3_client, s3_bucket, s3_path, files_to_expect):
             return False
     return True
 
-
-# Put log object in to s3 bucket
-def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
-    #store context of lambda log group and id for future access
-    context_dict = {
-        "log_group_name": context.log_group_name,
-        "request_id": context.aws_request_id
-    }
-    context_string = json.dumps(context_dict, default=str)
-    
-    #upload json context based on genome chosen and jobid
-    s3_client.put_object(
-        Bucket = s3_log_bucket,
-        Key = f'{genome}/jobs/{jobid}/{func_name}.json',
-        Body = context_string
-    )
-
 # Provide list of files to check if they exist in a directory
 def file_exist(path, files_to_expect):
     # expected files exist

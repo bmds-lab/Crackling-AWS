@@ -1,6 +1,5 @@
 import boto3, json, uuid, os, time
 
-
 from time import time,time_ns, sleep
 from datetime import datetime
 from common_funcs import *
@@ -9,9 +8,6 @@ from common_funcs import *
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
 TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
-
-s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
 
 dynamodb = boto3.resource('dynamodb')
 jobTable = dynamodb.Table(JOBS_TABLE)
@@ -82,8 +78,6 @@ def lambda_handler(event, context):
         'Genome' : genome # for debug
     })
 
-    #Store lambda id for logging purposes
-    create_log(s3_client, s3_log_bucket, context, genome, jobid, 'CreateJob')
     
     return {
         "statusCode": 200,

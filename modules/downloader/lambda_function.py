@@ -13,7 +13,6 @@ except ImportError:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-s3_log_bucket = os.environ['LOG_BUCKET']
 #starttime = time_ns()
 TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
 ISSL_QUEUE = os.getenv('ISSL_QUEUE')
@@ -22,7 +21,6 @@ LIST_PREFIXES = [".issl", ".offtargets"]
 # Create S3 client
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
-
 
 def is_issl_in_s3(accession):
     s3_destination_path = f"{accession}/issl"
@@ -139,8 +137,6 @@ def lambda_handler(event, context):
 
     # fasta file exists or has been created, moving to generating issl file
     sendSQS(ISSL_QUEUE, json_object)
-        
-    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'Downloader')
 
     print("All Done... Terminating Program.")
 

@@ -15,9 +15,8 @@ except:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-s3_log_bucket = os.environ['LOG_BUCKET']
 TARGET_SCAN_QUEUE = os.environ['QUEUE']
-#byte -> megabyte magnitude
+#byte - megabyte magnitude
 BYTE_TO_MB_DIVIDER = 1048576
 #max fasta file size
 CUT_OFF_MB = 650
@@ -117,8 +116,6 @@ def lambda_handler(event, context):
 
     sendSQS(TARGET_SCAN_QUEUE, json_object) 
     
-    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'IsslCreation')
-
     #close temp fasta file directory
     if os.path.exists(tmp_dir):
         print("Cleaning Up...")
