@@ -11,14 +11,10 @@ TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 NOTIFICATION_SQS = os.getenv('NOTIFICATION_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
-s3_log_bucket = os.environ['LOG_BUCKET']
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(TARGETS_TABLE)
 sqsClient = boto3.client('sqs')
-
-# Create S3 client
-s3_client = boto3.client('s3')
 
 # Function that returns the reverse-complement of a given sequence
 complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
@@ -151,8 +147,6 @@ def lambda_handler(event, context):
     accession = params['Genome']
     sequence = params['Sequence']
     jobid = params['JobID']
-    
-    create_log(s3_client, s3_log_bucket, context, accession, jobid, 'TargetScan')
     
     taskCount = find_targets(params) 
 

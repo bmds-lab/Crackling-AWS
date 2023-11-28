@@ -30,9 +30,6 @@ notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
 sqs_client = boto3.client('sqs')
 
-s3_log_bucket = os.environ['LOG_BUCKET']
-s3_client = boto3.client('s3')
-
 dynamodb = boto3.resource('dynamodb')
 TARGETS_TABLE = dynamodb.Table(targets_table_name)
 
@@ -40,23 +37,6 @@ TARGETS_TABLE = dynamodb.Table(targets_table_name)
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
     call(*args, **kwargs)
-
-# Put log object in to s3 bucket
-def create_log(s3_client, s3_log_bucket, context, genome, jobid, func_name):
-    #store context of lambda log group and id for future access
-    context_dict = {
-        "log_group_name": context.log_group_name,
-        "request_id": context.aws_request_id,
-    }
-    
-    context_string = json.dumps(context_dict, default=str)
-    
-    #upload json context based on genome chosen and jobid
-    s3_client.put_object(
-        Bucket = s3_log_bucket,
-        Key = f'{genome}/jobs/{jobid}/{func_name}.json',
-        Body = context_string
-    )
     
 # Function that replaces U with T in the sequence (to go back from RNA to DNA)
 def transToDNA(rna):
@@ -238,14 +218,7 @@ def lambda_handler(event, context):
           'TargetID'      : message['TargetID'],
           'Consensus'     : "",
         }
-        
-        #METRIC CODE
-
-        #log name based on request_id, a unique identifier
-        #output = 'ontarget/Consensus_'+context.aws_request_id[0:8]
-        #store lambda id for future logging
-        #create_log(s3_client, s3_log_bucket, context, genome,message['JobID'], output)
-    
+            
         ReceiptHandles.append(record['receiptHandle'])
        
     #print(f"Processing {len(records)} guides.")

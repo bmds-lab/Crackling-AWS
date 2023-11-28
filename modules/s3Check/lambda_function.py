@@ -5,8 +5,6 @@ from botocore.exceptions import ClientError
 
 from common_funcs import *
 
-s3_log_bucket = os.environ['LOG_BUCKET']
-
 s3_client = boto3.client('s3')
 
 QUEUE = os.environ['QUEUE']
@@ -18,13 +16,8 @@ def filetest(s3_bucket,key):
     except ClientError:
         return ""
 
-def create_multiple_logs(content, context, name):
-    json_string = json.loads(content)
-    create_log(s3_client, s3_log_bucket, context, json_string['Genome'], json_string['JobID'], name)
-
 def lambda_handler(event, context):
     # get bucket
-    # bucket = event['Records'][0]['s3']['bucket']['name']
     bucket = os.environ['BUCKET']
 
     # break key into components
@@ -34,7 +27,6 @@ def lambda_handler(event, context):
         accession = "/".join(Path(key).parts[:-1])
         issltest = os.path.join(accession,'issl.notif')
         file_content = ""
-
         
         # get content of issl
         file_content = filetest(bucket,issltest)

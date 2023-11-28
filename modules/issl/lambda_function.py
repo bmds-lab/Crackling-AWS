@@ -15,14 +15,12 @@ task_tracking_table_name = os.getenv('TASK_TRACKING_TABLE')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
 notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
-
 #boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 sqs_client = boto3.client('sqs')
 
 s3_bucket = os.environ['BUCKET']
-s3_log_bucket = os.environ['LOG_BUCKET']
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
@@ -37,12 +35,6 @@ JOBS_TABLE = dynamodb.Table(jobs_table_name)
 def caller(*args, **kwargs):
     print(f"Calling: {args}")
     call(*args, **kwargs)
-    
-def store_log(context, genome, jobId):
-    #log name based on request_id, a unique identifier
-    output = 'offtarget/Issl_'+ context.aws_request_id[0:8]
-    #store lambda id for future logging
-    create_log(s3_client, s3_log_bucket, context, genome, jobId, output)
 
 def CalcIssl(targets, genome_issl_file):
     tmpToScore = tempfile.NamedTemporaryFile('w', delete=False)
@@ -224,9 +216,6 @@ def lambda_handler(event, context):
                 ReceiptMessages[genome] = []
                 
                 print(jobId, genome)
-
-                # Benchmark code
-                store_log(context, genome, jobId)
             
             # Error - Empty fetched result from dynamodb
             else:
