@@ -29,3 +29,12 @@ I created the following lambda layers to satisfy dependencies for lambda functio
 *lib* lambda layer was also updated with more recent and additional "shared objects" library files.
 
 Assisted Nick with EC2 part of the project when required.
+
+## Mattias Winsen
+
+Contributions to this project includede
+ - Implementation of VPC internet gateways to reduce NAT costs
+ - Notifier and Task Tracking System
+ - Removal of Bowtie 2
+ - Removal of EC2
+ - Downloader Genome Caching
