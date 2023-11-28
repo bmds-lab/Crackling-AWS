@@ -129,18 +129,6 @@ def lambda_handler(event, context):
     # As this Lambda function is triggered by DynamoDB, we need to handle two
     # events: insertions and deletions.
     # See: https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html
-    #required = {'JobID': 'S', 'Genome': 'S', 'Chromosome': 'S', 'Location': 'N', 'Sequence': 'S'}
-    # required = {'JobID': 'S', 'Sequence': 'S'}
-
-    # inserted = [r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
-    # for i in inserted:
-    #     try:
-    #         jobid = i['JobID']['S']
-    #         params = {p: i[p][required[p]] for p in required}
-    #         params['Sequence'] = clean_candidate_sequence(params['Sequence'])
-    #     except:
-    #         return 'Entry contains invalid information'
-
 
     params,body = recv(event)
     
@@ -153,15 +141,5 @@ def lambda_handler(event, context):
     # set the total number of tasks the job needs to complete
     job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
 
-    #just in case by some bizare circumstances target scan finishes after ISSL/Consensus, check if all jobs are completed
-    spawn_notification_if_complete(dynamodb, TASK_TRACKING_TABLE, job, NOTIFICATION_SQS)
-
-        #print('Processed INSERT event for {}.'.format(jobid))
-        
-    # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
-    # for r in removed:
-    #     jobid = r['JobID']['S']
-    #     deleteCandidateTargets(jobid)
-        #print('Processed REMOVE event for {}.'.format(jobid))
     
     return None #'Completed {} tasks.'.format(len(inserted) + len(removed))
