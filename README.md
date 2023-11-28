@@ -171,6 +171,8 @@ Please now proceed to read the following documentation for futher install instru
 ### 6. Deploying using the CDK
 Working from the `<root>/aws` directory:
 ```bash
+# Run this during first deployment
+cdk bootstrap aws://377188290550/ap-southeast-2
 # Useful CDK commands include:
 cdk synth # for creating the CloudFormation template without deploying
 cdk deploy # for deploying the stack via CloudFormation
