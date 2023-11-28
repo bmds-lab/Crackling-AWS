@@ -32,9 +32,17 @@ Assisted Nick with EC2 part of the project when required.
 
 ## Mattias Winsen
 
-Contributions to this project includede
+Contributions to this project include
  - Implementation of VPC internet gateways to reduce NAT costs
  - Notifier and Task Tracking System
  - Removal of Bowtie 2
  - Removal of EC2
  - Downloader Genome Caching
+
+## Diego Ocando
+
+- Implemented an approach for storing lambda function ids (event specific) to be used for extracting metric data using Cloudwatch insight logs. This data was used to create benchmark and data analysis for understanding limitations of the Crackling pipeline with respect to memory and storage constraints.
+- Tested a different storage option (Amazon EFS) to determine how viable it was. Though, existing S3 and Ephemeral option worked best.
+- Updated existing issl function to deal with multi-genome batches and handled filesystem size limitations by resending those genomes back to queue.
+- Removal of S3Check (due to removal of Bowtie 2).
+- Assisted in other non-functional features such as cloudfront, architecture understanding and details on usage metrics. 
