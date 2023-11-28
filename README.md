@@ -38,7 +38,8 @@ Please refer to our paper when using Crackling:
 
 ## Architecture
 
-![Crackling-AWS.drawio](Crackling-AWS.drawio.png)
+![Final-Architecture-wNotifier drawio](https://github.com/bmds-lab/Crackling-AWS/assets/62460407/f00f8eab-2a30-4286-8417-4c5e528d32b6)
+
 
 ## Crackling-AWS Deployment Guide
 
