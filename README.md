@@ -99,7 +99,7 @@ $ npm install -g aws-cdk
 
 # Check the AWS cdk is executable
 $ cdk --version
-> 2.15.0 (build 151055e)
+> 2.97.0 (build d7cf3be)
 
 # Make sure python3.8 venv is installed
 $ sudo apt-get install python3-venv
@@ -146,7 +146,7 @@ pip freeze > requirements.txt
 
 Working in the root directory of the repo, run:
 ```bash
-mkdir layers/ncbi/python
+mkdir -p layers/ncbi/python
 python3 -m pip install --target layers/ncbi/python -r layers/ncbi_reqs.txt
 ```
 
