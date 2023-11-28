@@ -128,7 +128,7 @@ The consensus module has Python dependencies that need to be installed. They nee
 
 Working in the root directory of the repo, run:
 ```
-mkdir ./layers/consensusPy38Pkgs/python
+mkdir -p ./layers/consensusPy38Pkgs/python
 python3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
 ```
 
