@@ -48,7 +48,7 @@ Please refer to our paper when using Crackling:
 $ sudo apt-get update
 
 # install aws cli
-$ sudo apt-get awscli
+$ sudo apt-get install awscli
 
 # configure aws credentials (config and cred files can be found in . ~/aws (hidden files) in linux/windows)
 # Use the following settings:
@@ -121,14 +121,14 @@ ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '
 
 The `pip install -r' command is used frequently throught the following section. In some enviroments, this command errors out. If this occours, please view the requirments.txt file (referenced in the command) and use pip to install each library manually.
 
-**Concensus Layer**
+**Consensus Layer**
 
 The consensus module has Python dependencies that need to be installed. They need to be installed and packaged locally before deploying to AWS.
 
 Working in the root directory of the repo, run:
 ```
+mkdir ./layers/consensusPy38Pkgs/python
 python3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
-
 ```
 
 Read more in the AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-dependencies
