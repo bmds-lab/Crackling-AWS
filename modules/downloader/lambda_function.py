@@ -1,10 +1,16 @@
 import sys, re, os, shutil, zipfile, boto3, json
 
+# NEW THINGS #############################
+from ftplib import FTP
+import math
+#########################################
+
 from threading import Thread
 from time import time, time_ns
 from botocore.exceptions import ParamValidationError
 
 from common_funcs import *
+
 
 try:
     import ncbi.datasets
@@ -17,10 +23,80 @@ s3_bucket = os.environ['BUCKET']
 TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
 ISSL_QUEUE = os.getenv('ISSL_QUEUE')
 LIST_PREFIXES = [".issl", ".offtargets"]
+FILE_PARTS_QUEUE = os.getenv('FILE_PARTS_QUEUE')
 
 # Create S3 client
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
+
+def retrieve_fasta_meta_data(genome_accession):
+    try:
+        # Construct FTP URL
+        ftp = FTP("ftp.ncbi.nih.gov")
+        ftp.login()
+        path = f"/genomes/all/{genome_accession[0:3]}/{genome_accession[4:7]}/{genome_accession[7:10]}/{genome_accession[10:13]}"
+        ftp.cwd(path)
+      
+        # find genome name
+        directories = ftp.nlst()
+        for directory in directories:
+            if directory.startswith(genome_accession):
+                required_directory = directory
+                break
+    
+        ftp.cwd(required_directory)
+        ftp_directory_path = f"{path}/{required_directory}"
+
+        files = ftp.nlst()
+        ftp.sendcmd("TYPE i")
+
+        # list .fna files
+        fna_file_details = []
+        for file in files:
+            if ".fna" in file:
+                file_size = ftp.size(file)
+                print(f"{file}: {file_size} bytes")
+                fna_file_details.append({"file_name": file, "file_size": file_size})
+
+        # complete connection to ftp server
+        ftp.quit()
+        # chosen_fna_file = fna_file_details[0]["file_name"]
+        http_base_url = "https://ftp.ncbi.nlm.nih.gov"
+        http_url = f"{http_base_url}{ftp_directory_path}"
+        return http_url, fna_file_details
+    except Exception as e:
+        print(f"Error downloading file: {e}")
+
+
+def file_parts(genome_accession, http_url, fna_file_details):
+    num_file_parts = 10
+    num_files = len(fna_file_details)
+    result = []
+
+    for file in fna_file_details:
+        chosen_file_name = file["file_name"]
+        chosen_file_size = file["file_size"]
+        part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
+        file_http_url = f"{http_url}/{chosen_file_name}"
+        
+        for i in range(num_file_parts):
+            start_byte = i * part_size
+            end_byte = min((i + 1) * part_size - 1, chosen_file_size - 1)
+            
+            part_info = {
+                "genome_accession": genome_accession,
+                "num_files": num_files,
+                "filename": chosen_file_name,
+                "file_url": file_http_url,
+                "part": i+1,
+                "start_byte": start_byte,
+                "end_byte": end_byte,
+            }
+            
+            result.append(part_info)
+
+    return result
+
 
 def is_issl_in_s3(accession):
     s3_destination_path = f"{accession}/issl"
@@ -119,6 +195,15 @@ def lambda_handler(event, context):
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
+
+    http_url, fna_file_details = retrieve_fasta_meta_data(accession)
+    file_names = file_parts(accession, http_url, fna_file_details)
+
+    for file in file_names:
+        MessageBody=json.dumps(file)
+        sendSQS(FILE_PARTS_QUEUE, MessageBody)
+        
+    print(file_names)
     
     #Determine if S3 has required issl files to skip ahead in pipeline
     if is_issl_in_s3(accession):
@@ -126,6 +211,10 @@ def lambda_handler(event, context):
         sendSQS(TARGET_SCAN_QUEUE, json_object) 
         print("All Done... Terminating Program.")
         return 
+    
+    # test that the code can connect to the FTP server 
+    retrieve_fasta_meta_data(accession)
+
 
     #Since issl file does not exist, check if a fasta file can be used to create the issl file
     if not is_fasta_in_s3(s3_client, s3_bucket, accession):

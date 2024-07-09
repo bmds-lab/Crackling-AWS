@@ -166,6 +166,23 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
+        ## stores part files and their etag values 
+
+        ddb_Uploadedfiles = ddb_.Table(
+            self, "ddbUploadedfiles",
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
+            partition_key=ddb_.Attribute(
+                name="GenomeFileName",  # Partition key
+                type=ddb_.AttributeType.STRING
+            ),
+            sort_key=ddb_.Attribute(
+                name="FileNamePartNumber",  # Sort key
+                type=ddb_.AttributeType.NUMBER 
+            ),
+            stream=ddb_.StreamViewType.NEW_IMAGE
+        )
+
         ### Lambda is an event-driven compute service.
         # Some lambda functions may need additional resources - these are provided via layers.
         # This layer provides the ISSL scoring binary.
@@ -181,7 +198,17 @@ class CracklingStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64],
             compatible_runtimes=[
-                lambda_.Runtime.PYTHON_3_8
+                lambda_.Runtime.PYTHON_3_10
+            ]
+        )
+
+        ### Lambda layer containing python3.10 packages for rques
+        lambdaLayerRequests = lambda_.LayerVersion(self, "requests",
+            code=lambda_.Code.from_asset("../layers/requestsPy310Pkgs"),
+            removal_policy=RemovalPolicy.DESTROY,
+            compatible_architectures=[lambda_.Architecture.X86_64],
+            compatible_runtimes=[
+                lambda_.Runtime.PYTHON_3_10
             ]
         )
 
@@ -191,7 +218,7 @@ class CracklingStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64],
             compatible_runtimes=[
-                lambda_.Runtime.PYTHON_3_8
+                lambda_.Runtime.PYTHON_3_10
             ]
         )
 
@@ -239,6 +266,16 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
+
+        ##### ----> test SQS queue for the new downloaderlambda
+        sqsFileParts = sqs_.Queue(self, "sqsFileParts", 
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(30)
+        )
+        #### chnage as needed when using the actual one
+
+
         sqsTargetScan = sqs_.Queue(
             self,
             "sqsTargetScan", 
@@ -276,7 +313,7 @@ class CracklingStack(Stack):
         # MAX_SEQ_LENGTH defines the maximum length that the input genetic sequence can be.
         # Read/write permissions on the jobs table needs to be granted to this function.
         lambdaCreateJob = lambda_.Function(self, "createJob", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/createJob"),
@@ -295,7 +332,7 @@ class CracklingStack(Stack):
         
         # Lambda Downloader
         lambdaDownloader = lambda_.Function(self, "downloader", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/downloader"),
@@ -310,14 +347,17 @@ class CracklingStack(Stack):
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
+                'FILE_PARTS_QUEUE' : sqsFileParts.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
-            },
+            }
         )
+
 
         ddbJobs.grant_stream_read(lambdaDownloader)
         sqsIsslCreation.grant_send_messages(lambdaDownloader)
         sqsTargetScan.grant_send_messages(lambdaDownloader)
+        sqsFileParts.grant_send_messages(lambdaDownloader)
 
         lambdaDownloader.add_event_source_mapping(
             "mapLdaDownloaderDdbJobs",
@@ -329,9 +369,46 @@ class CracklingStack(Stack):
         lambdaDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
 
 
+       # This lambda downlaods and uplaods the partial genome files. It is triggered by messges in an sqs queue
+       # NEED to do
+       # - create a lambda  layer for requests D
+       # - attach the layer to here D
+       # - actually create the body of the lambda function to extract the information from the SQS queue D
+       # - Deploy the application and check that it is behaving as intended
+
+       # - attched to dynamoDB
+       # - upload to s3 
+       
+        lambdaPartloader = lambda_.Function(self, "partloader", 
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/partloader"),
+            layers=[lambdaLayerCommonFuncs, lambdaLayerRequests],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10), 
+            environment={
+                'FILES_TABLE' : ddb_Uploadedfiles.table_name,
+                'BUCKET' : s3GenomeAccess.attr_arn,
+            }
+        )
+
+        sqsFileParts.grant_consume_messages(lambdaPartloader)
+        lambdaPartloader.add_event_source_mapping(
+            "mapppIsslCreation",
+            event_source_arn=sqsFileParts.queue_arn,
+            batch_size=1
+        )
+        ddb_Uploadedfiles.grant_read_write_data(lambdaPartloader) # read write access to dynamoDB table
+        s3Genome.grant_read_write(lambdaPartloader)  # read write access to genome bucket 
+        lambdaPartloader.add_to_role_policy(lambdaS3AccessPointIAM) # idk what this is
+
+
         # -> -> issl_creation
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/isslCreation"),
@@ -364,7 +441,7 @@ class CracklingStack(Stack):
         # It needs permission to read/write data from the jobs and guides tables.
         # It needs permission to send messages to the SQS queues.
         lambdaTargetScan = lambda_.Function(self, "targetScan", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/targetScan"),
@@ -401,7 +478,7 @@ class CracklingStack(Stack):
         # This function consumes messages in the SQS consensus queue.
         # The results are written to the DynamoDB consensus table.
         lambdaConsensus = lambda_.Function(self, "consensus", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             # insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/consensus"),
@@ -435,7 +512,7 @@ class CracklingStack(Stack):
         # This function consumes messages in the SQS Issl queue.
         # The results are written to the DynamoDB consensus table.
         lambdaIssl = lambda_.Function(self, "issl", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/issl"),
@@ -475,7 +552,7 @@ class CracklingStack(Stack):
         # Consumes message from notification que
         # sends email to user
         lambdaNotifier = lambda_.Function(self, "Notifier", 
-            runtime=lambda_.Runtime.PYTHON_3_8,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/notifier"),
