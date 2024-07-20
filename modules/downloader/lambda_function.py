@@ -29,6 +29,9 @@ FILE_PARTS_QUEUE = os.getenv('FILE_PARTS_QUEUE')
 s3_client = boto3.client('s3')
 s3_resource = boto3.resource('s3')
 
+
+
+
 def retrieve_fasta_meta_data(genome_accession):
     try:
         # Construct FTP URL
@@ -68,45 +71,104 @@ def retrieve_fasta_meta_data(genome_accession):
         print(f"Error downloading file: {e}")
 
 
+# start the multipart upload 
+def start_part_upload(bucket_name, genome_accession, filename):
+    object_key = f"MultiPart_Testing/{genome_accession}/fasta/{filename}"
+    response = s3_client.create_multipart_upload(
+        Bucket=bucket_name,
+        Key=object_key
+    )
+    upload_id = response['UploadId']
+    return upload_id
+
+
+
 def file_parts(genome_accession, http_url, fna_file_details):
-    num_file_parts = 10
     num_files = len(fna_file_details)
     result = []
+
+    min_multipart_file_size = 50000000
 
     for file in fna_file_details:
         chosen_file_name = file["file_name"]
         chosen_file_size = file["file_size"]
-        part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
+
         file_http_url = f"{http_url}/{chosen_file_name}"
-        
-        for i in range(num_file_parts):
-            start_byte = i * part_size
-            end_byte = min((i + 1) * part_size - 1, chosen_file_size - 1)
-            
+        object_key = f"MultiPart_Testing/{genome_accession}/fasta/{chosen_file_name}"
+
+        if chosen_file_size <= min_multipart_file_size:
             part_info = {
                 "genome_accession": genome_accession,
                 "num_files": num_files,
                 "filename": chosen_file_name,
                 "file_url": file_http_url,
-                "part": i+1,
-                "start_byte": start_byte,
-                "end_byte": end_byte,
+                "part": 1,
+                "start_byte": 0,
+                "end_byte": chosen_file_size - 1,
+                "upload_id": None,
+                "object_key": object_key
             }
-            
             result.append(part_info)
+
+        else:
+            num_file_parts = 7   # this detemines how many parts the file is going to split into 
+            part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
+
+            # initialise the multipart upload
+            upload_id = start_part_upload(s3_bucket, genome_accession, chosen_file_name)
+            for i in range(num_file_parts):
+                start_byte = i * part_size
+                end_byte = min((i + 1) * part_size - 1, chosen_file_size - 1)
+                
+                part_info = {
+                    "genome_accession": genome_accession,
+                    "num_files": num_files,
+                    "parts_per_file": num_file_parts,
+                    "filename": chosen_file_name,
+                    "file_url": file_http_url,
+                    "part": i+1,
+                    "start_byte": start_byte,
+                    "end_byte": end_byte,
+                    "upload_id": upload_id,
+                    "object_key": object_key
+                }
+                
+                result.append(part_info)
 
     return result
 
 
 def is_issl_in_s3(accession):
     s3_destination_path = f"{accession}/issl"
+    s3_multipart_destination_part2 =  f"MultiPart_Testing/{accession}/issl"
+    
 
     #issl and offtarget files based on accession
     files_to_expect = []
     for prefix in LIST_PREFIXES:
         files_to_expect.append(accession + prefix)
 
-    return files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, files_to_expect)
+    actual = files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, files_to_expect)
+    test = files_exist_s3_dir(s3_client, s3_bucket, s3_multipart_destination_part2, files_to_expect)
+
+    return actual, test
+
+
+def is_fasta_in_s3_multipart(accession):
+    try:
+        s3_multipart_destination_folder =  f"MultiPart_Testing/{accession}/fasta"
+        response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix= s3_multipart_destination_folder)
+        
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                if obj['Size'] > 0:
+                    return True
+            return False
+        else:
+            return False
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return False
 
 
 # Function uses the ncbi api to download the accession data and it uploads it to AWS S3 bucket
@@ -196,25 +258,36 @@ def lambda_handler(event, context):
     if accession == 'fail':
         sys.exit('Error: No accession found.')
 
-    http_url, fna_file_details = retrieve_fasta_meta_data(accession)
-    file_names = file_parts(accession, http_url, fna_file_details)
-
-    for file in file_names:
-        MessageBody=json.dumps(file)
-        sendSQS(FILE_PARTS_QUEUE, MessageBody)
-        
-    print(file_names)
+    actual_issl_exists, mulit_part_issl = is_issl_in_s3(accession)
     
+    if mulit_part_issl:
+        print("The ISSL for this has already been genereated")
+    else:
+        print("The ISSL doesn't exist in this direcotry")
+
+    # checks if the file are in the S3 directory for multipart testing. If it is, it sends it over
+
+    if not is_fasta_in_s3_multipart(accession):
+        
+        http_url, fna_file_details = retrieve_fasta_meta_data(accession)
+        file_names = file_parts(accession, http_url, fna_file_details)
+        print("The fasta files have yet to be created")
+        for file in file_names:
+            MessageBody=json.dumps(file)
+            sendSQS(FILE_PARTS_QUEUE, MessageBody)
+        print(file_names)
+        # here i would send it over to the ISSL  queue after creating the fasta files
+    else:
+        print("the files already exists within the system, nothing should get sent through the queue, it would have to be send over to another queue in actuality")
+        # here I would send it to the 
+
     #Determine if S3 has required issl files to skip ahead in pipeline
-    if is_issl_in_s3(accession):
+    if actual_issl_exists:
         print ("Issl file has already been generated. Moving to scoring process")
         sendSQS(TARGET_SCAN_QUEUE, json_object) 
         print("All Done... Terminating Program.")
         return 
     
-    # test that the code can connect to the FTP server 
-    retrieve_fasta_meta_data(accession)
-
 
     #Since issl file does not exist, check if a fasta file can be used to create the issl file
     if not is_fasta_in_s3(s3_client, s3_bucket, accession):
@@ -223,6 +296,7 @@ def lambda_handler(event, context):
         if os.path.exists(tmp_dir):
             print("Cleaning Up...")
             shutil.rmtree(tmp_dir)
+
 
     # fasta file exists or has been created, moving to generating issl file
     sendSQS(ISSL_QUEUE, json_object)

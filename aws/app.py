@@ -267,14 +267,22 @@ class CracklingStack(Stack):
             retention_period=duration
         )
 
+        dlq = sqs_.Queue(
+            self, "DLQ",
+            retention_period=Duration.days(14)
+        )
+
         ##### ----> test SQS queue for the new downloaderlambda
         sqsFileParts = sqs_.Queue(self, "sqsFileParts", 
             receive_message_wait_time=Duration.seconds(20),
             visibility_timeout=duration,
-            retention_period=Duration.minutes(30)
+            retention_period=Duration.minutes(30),
+            dead_letter_queue=sqs_.DeadLetterQueue(
+                max_receive_count=3,  # Set maxReceiveCount to 3
+                queue=dlq
+            )
         )
         #### chnage as needed when using the actual one
-
 
         sqsTargetScan = sqs_.Queue(
             self,
