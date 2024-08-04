@@ -122,17 +122,20 @@ ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '
 
 The `pip install -r' command is used frequently throught the following section. In some enviroments, this command errors out. If this occours, please view the requirments.txt file (referenced in the command) and use pip to install each library manually.
 
-**Consensus Layer**
 
-The consensus module has Python dependencies that need to be installed. They need to be installed and packaged locally before deploying to AWS.
+
+
+**PartLoader Layer**
 
 Working in the root directory of the repo, run:
 ```
-mkdir -p ./layers/consensusPy38Pkgs/python
-python3 -m pip install --target layers/consensusPy38Pkgs/python -r modules/consensus/requirements.txt
+mkdir -p ./layers/requestsPy310Pkgs/python
+python3 -m pip install --target layers/requestsPy310Pkgs/python requests
 ```
 
-Read more in the AWS documentation: https://docs.aws.amazon.com/lambda/latest/dg/python-package.html#python-package-dependencies
+**Consensus Layer**
+
+The consensus layer has Python dependencies, including scikit-learn. Scikit-learn along with its dependencies is over 250MB. To overcome the 250MB Lambda layer limit, these dependencies are being installed directly within the consensus Lambda and uploaded to S3. Hence, they do not need to be installed locally before deployment.
 
 If you make changes to the dependencies, make sure the `requirements.txt` file is updated:
 

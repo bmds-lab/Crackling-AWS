@@ -192,15 +192,15 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        ### Lambda layer containing python3.8 packages
-        lambdaLayerPythonPkgs = lambda_.LayerVersion(self, "python38pkgs",
-            code=lambda_.Code.from_asset("../layers/consensusPy38Pkgs"),
-            removal_policy=RemovalPolicy.DESTROY,
-            compatible_architectures=[lambda_.Architecture.X86_64],
-            compatible_runtimes=[
-                lambda_.Runtime.PYTHON_3_10
-            ]
-        )
+        # ### Lambda layer containing python3.8 packages
+        # lambdaLayerPythonPkgs = lambda_.LayerVersion(self, "python38pkgs",
+        #     code=lambda_.Code.from_asset("../layers/consensusPy38Pkgs"),
+        #     removal_policy=RemovalPolicy.DESTROY,
+        #     compatible_architectures=[lambda_.Architecture.X86_64],
+        #     compatible_runtimes=[
+        #         lambda_.Runtime.PYTHON_3_10
+        #     ]
+        # )
 
         ### Lambda layer containing python3.10 packages for rques
         lambdaLayerRequests = lambda_.LayerVersion(self, "requests",
@@ -211,6 +211,7 @@ class CracklingStack(Stack):
                 lambda_.Runtime.PYTHON_3_10
             ]
         )
+
 
         ### Lambda layer containing the sgRNAScorer 2.0 model
         lambdaLayerSgrnascorerModel = lambda_.LayerVersion(self, "sgrnascorer2Model",
@@ -325,7 +326,7 @@ class CracklingStack(Stack):
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/createJob"),
-            layers=[lambdaLayerCommonFuncs, lambdaLayerPythonPkgs],
+            layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             # 
             # was this meant to be left commented
@@ -338,7 +339,9 @@ class CracklingStack(Stack):
         ddbJobs.grant_read_write_data(lambdaCreateJob)
         ddbTaskTracking.grant_read_write_data(lambdaCreateJob)
         
-        # Lambda Downloader
+        ### Lambda function that organises the parallel download
+        # Extracts names and sizes from fasta files in NCBI server
+        # Split each file into part file portions
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
@@ -376,17 +379,8 @@ class CracklingStack(Stack):
         s3Genome.grant_read_write(lambdaDownloader)   
         lambdaDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
 
-
-       # This lambda downlaods and uplaods the partial genome files. It is triggered by messges in an sqs queue
-       # NEED to do
-       # - create a lambda  layer for requests D
-       # - attach the layer to here D
-       # - actually create the body of the lambda function to extract the information from the SQS queue D
-       # - Deploy the application and check that it is behaving as intended
-
-       # - attched to dynamoDB
-       # - upload to s3 
        
+       ### Lmabda function that Downloads files from NCBI server and uploads them to S3 
         lambdaPartloader = lambda_.Function(self, "partloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
@@ -400,10 +394,12 @@ class CracklingStack(Stack):
             environment={
                 'FILES_TABLE' : ddb_Uploadedfiles.table_name,
                 'BUCKET' : s3GenomeAccess.attr_arn,
+                'ISSL_QUEUE' : sqsIsslCreation.queue_url
             }
         )
 
         sqsFileParts.grant_consume_messages(lambdaPartloader)
+        sqsIsslCreation.grant_send_messages(lambdaPartloader)
         lambdaPartloader.add_event_source_mapping(
             "mapppIsslCreation",
             event_source_arn=sqsFileParts.queue_arn,
@@ -453,7 +449,7 @@ class CracklingStack(Stack):
             handler="lambda_function.lambda_handler",
             insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/targetScan"),
-            layers=[lambdaLayerPythonPkgs,lambdaLayerCommonFuncs],
+            layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -490,7 +486,7 @@ class CracklingStack(Stack):
             handler="lambda_function.lambda_handler",
             # insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/consensus"),
-            layers=[lambdaLayerLib, lambdaLayerPythonPkgs, lambdaLayerSgrnascorerModel, lambdaLayerRnafold, lambdaLayerCommonFuncs],
+            layers=[lambdaLayerLib, lambdaLayerSgrnascorerModel, lambdaLayerRnafold, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -500,9 +496,15 @@ class CracklingStack(Stack):
                 'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
-                'CONSENSUS_QUEUE' : sqsConsensus.queue_url
+                'CONSENSUS_QUEUE' : sqsConsensus.queue_url, 
+                'BUCKET' : s3GenomeAccess.attr_arn
             }
         )
+
+
+        s3Genome.grant_read_write(lambdaConsensus)   
+        lambdaConsensus.add_to_role_policy(lambdaS3AccessPointIAM)
+
         sqsNotification.grant_send_messages(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
