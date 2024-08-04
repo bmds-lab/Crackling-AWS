@@ -3,15 +3,175 @@ import boto3
 import os
 import tempfile
 import glob
-import joblib
+#import joblib
 import re
 import ast
 from time import time_ns
 
-from sklearn.svm import SVC
+#from sklearn.svm import SVC
 from subprocess import call
-
 from common_funcs import *
+
+
+import subprocess 
+import sys, zipfile, io, shutil
+
+s3_bucket = os.environ['BUCKET']
+
+
+
+######################## Setting up python packages required to run model ##################################
+
+# Temp solution to overcome 250MB limit for lambda layers. Download sk-learn to lambda and upload to S3 
+
+def install_and_upload_sklearn_to_s3(s3_bucket, s3_key, package_name='scikit-learn'):
+
+    temp_dir = "/tmp/PY"
+    print(f"Created temporary directory: {temp_dir}")
+
+    # Path for the virtual environment
+    venv_dir = os.path.join(temp_dir, 'venv')
+    try:
+        # Create a virtual environment
+        subprocess.run([sys.executable, '-m', 'venv', venv_dir], check=True)
+        print(f"Virtual environment created at {venv_dir}")
+        # Activate the virtual environment and install the package
+        pip_executable = os.path.join(venv_dir, 'bin', 'pip')
+        subprocess.run([pip_executable, 'install', package_name], check=True)
+        print(f"{package_name} installed successfully in virtual environment")
+
+        # Directory where the packages are installed
+        site_packages_dir = os.path.join(venv_dir, 'lib', 'python3.10', 'site-packages')
+        # create a zip file of the installed packages
+        zip_file_path = os.path.join(temp_dir, f'{package_name}.zip')
+        with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, _, files in os.walk(site_packages_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, site_packages_dir)
+                    zf.write(file_path, arcname)
+        print(f"Zipped {package_name} packages to {zip_file_path}")
+
+        # Upload the zip file to S3
+        s3_client = boto3.client('s3')
+        with open(zip_file_path, 'rb') as f:
+            s3_client.upload_fileobj(f, s3_bucket, s3_key)
+        print(f"Uploaded {zip_file_path} to s3://{s3_bucket}/{s3_key}")
+
+        return {
+            'statusCode': 200,
+            'body': f'{package_name} was successfully uploaded to {s3_key}.'
+        }
+
+    except subprocess.CalledProcessError as e: # error actually installing the packages
+        print(f"Subprocess error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': f'Error installing the packages'
+        }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': f'Error occurred: {str(e)}'
+        }
+    finally:
+        # Clean up the temporary directory
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception as cleanup_error:
+            print(f"Failed to remove temporary directory")
+
+def get_directory_size(directory):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            total_size += os.path.getsize(filepath)
+    return total_size
+    
+def handle_sklearn_package():
+
+    s3_client = boto3.client('s3')
+    bucket_name = s3_bucket  
+    zip_file_key = "Test_Packages/python123.zip"
+    temp_dir_py = "/tmp/py_files"
+
+    print(f"Created temporary folder {temp_dir_py}")
+    
+    try:
+        
+        response = s3_client.get_object(Bucket=bucket_name, Key=zip_file_key)
+        zip_content = response['Body'].read()
+        zip_size = len(zip_content)
+        print(f"Downlaoded file size is {zip_size} bytes")
+        
+        if zip_size == 0:
+            print("Empty download")
+            return {
+                'statusCode': 500,
+                'body': 'Error: Downloaded ZIP file is empty'
+            }
+        
+        print("Download is successful")
+        print(f"unzipping file to temporary directory: {temp_dir_py}")
+        with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
+            z.extractall(temp_dir_py)
+        
+
+        dir_size_py = get_directory_size(temp_dir_py)
+        print(f"size of unzipped directory {dir_size_py} bytes")
+
+        python_dir = temp_dir_py
+        sys.path.insert(0, python_dir) # add path to python packages to system path
+        
+        print("Current system path:", sys.path)
+        try:
+            import sklearn # check if import is successful
+            version = sklearn.__version__
+        except ImportError as e:
+            print(f"ImportError: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': f'scikit-learn is not available. Error: {str(e)}'
+            }
+    
+    except Exception as e:
+        print(f'Error occurred: {str(e)}')
+        return {
+            'statusCode': 500,
+            'body': f'Error occurred: {str(e)}'
+        }
+
+
+def file_exists_in_s3(bucket_name, s3_key):
+    s3 = boto3.client('s3')
+    try:
+        s3.head_object(Bucket=bucket_name, Key=s3_key)
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return False
+        else:
+            raise
+
+try:
+    from sklearn.svm import SVC
+    import joblib
+except ImportError:
+    s3_key = "Test_Packages/python123.zip"
+    if file_exists_in_s3(s3_bucket, s3_key):
+        handle_sklearn_package()
+    else:
+        install_and_upload_sklearn_to_s3(s3_bucket, s3_key, package_name='scikit-learn')
+        handle_sklearn_package()
+
+
+from sklearn.svm import SVC
+import joblib
+
+
+############################################################################################################
 
 SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
 

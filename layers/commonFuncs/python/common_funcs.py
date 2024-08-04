@@ -119,6 +119,25 @@ def s3_fasta_dir_size(s3_client,s3_bucket,path):
     return filesize
 
 
+##########################################################
+def s3_fna_dir_size(s3_client,s3_bucket,path):
+    filesize = 0
+    paginator = s3_client.get_paginator("list_objects_v2")
+    response = paginator.paginate(Bucket=s3_bucket, Prefix=path, 
+        PaginationConfig={"PageSize": 1000})
+    for page in response:
+        files = page.get("Contents")
+        if files is None:
+            return 0
+        for file in files:
+            if ".fna" in file['Key']:
+                filesize += file['Size']
+    return filesize
+
+#############################################################
+
+
+
 #gets the size of a file, stackoverflow: questions/5315603
 def s3_get_file_size(s3_client, s3_bucket, path):
     response = s3_client.head_object(Bucket = s3_bucket, Key = path)

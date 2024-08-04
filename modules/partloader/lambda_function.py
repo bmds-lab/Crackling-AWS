@@ -6,14 +6,16 @@ from boto3.dynamodb.conditions import Key
 import time
 
 
+# define AWS resources
 s3_bucket = os.environ['BUCKET']
 s3_client = boto3.client('s3')
-
 dynamodb = boto3.resource('dynamodb')
 FILES_TABLE_NAME = os.environ['FILES_TABLE']
 FILES_TABLE = dynamodb.Table(FILES_TABLE_NAME)
+ISSL_QUEUE = os.getenv('ISSL_QUEUE')
 
 
+# Downloads a specific byte range of a fasta file from an NCBI server using HTTP range requests
 def download_part_file(filename, file_url, part, start_byte, end_byte, is_stream):
 
     max_retries = 3
@@ -21,31 +23,31 @@ def download_part_file(filename, file_url, part, start_byte, end_byte, is_stream
     
     while retries < max_retries:
         print(f"Part {part}_{filename} downloaded commencing....")
+
+        # Construct http range request 
         headers = {'Range': f'bytes={start_byte}-{end_byte}'}
         http_response = requests.get(file_url, headers=headers, stream = is_stream)
         
+        # Ensure partial content is sent through
         if http_response.status_code == 206:  # Partial Content
             part_filename = f"Part{part}_{filename}"
             print(f"Part {part} downloaded and saved as {part_filename}")
             return http_response
-        elif http_response.status_code == 404:
+        elif http_response.status_code == 404: # allow retries incase of 404 errors
             retries += 1
             print(f"Part {part} not found (HTTP 404). Retry {retries}/{max_retries} in 5 seconds...")
-            time.sleep(5)
+            time.sleep(5) 
             print(f"Failed to download part {part}: HTTP {http_response.status_code}")
         else:
             print(f"Failed to download part {part}: HTTP {http_response.status_code}")
-            return http_response, part_filename
-        
-    return http_response
+            return None
+    return None
 
-# this is uploading the whole part to S3 (but not as a part upload)
+# Streaming the entire file to S3
 def upload_to_s3(response,  object_key):
     try:
         response = s3_client.upload_fileobj(response.raw, s3_bucket, object_key)  
         print(f"File uploaded to S3: s3://{s3_bucket}/{object_key}")
-
-
         print(response)
         return True  
     except Exception as e:
@@ -53,19 +55,7 @@ def upload_to_s3(response,  object_key):
         raise 
 
 
-# def upload_to_s3_v2(response, genome_accession, part_filename, s3_bucket):
-#     s3 = boto3.client('s3')
-#     s3_key = f"Testing/{genome_accession}/fasta/{part_filename}"
-
-#     try:
-#         s3.upload_fileobj(response.raw, s3_bucket, s3_key)  
-#         print(f"File uploaded to S3: s3://{s3_bucket}/{s3_key}")
-#         return True  
-#     except Exception as e:
-#         print(f"Error uploading to S3: {str(e)}")
-#         raise
-
-
+# Uploading partial file to S3 using multi-part upload
 def part_upload_to_s3(response, upload_id, part_number, object_key):
     try:
         part_response = s3_client.upload_part(
@@ -92,8 +82,9 @@ def part_upload_to_s3(response, upload_id, part_number, object_key):
             print(f"Error aborting multipart upload: {str(abort_error)}")
         raise
 
-def all_parts_uploaded(filename, total_parts):
 
+# Check if all the parts of a file have been uploaded 
+def all_parts_uploaded(filename, total_parts):
     # Query the table to count the number of parts uploaded
     response = FILES_TABLE.query(
         KeyConditionExpression=Key('GenomeFileName').eq(filename)
@@ -114,8 +105,7 @@ def extract_etags_and_parts(filename):
         # Query DynamoDB to get all parts for the given filename
         response = FILES_TABLE.query(
             KeyConditionExpression=Key('GenomeFileName').eq(filename)
-        )
-        
+        ) 
         items = response['Items']
         parts = [{'ETag': item['etag'], 'PartNumber': int(item['FileNamePartNumber'])} for item in items]
         
@@ -128,6 +118,8 @@ def extract_etags_and_parts(filename):
         raise
     
 
+
+# Combine all the partial files into a single file 
 def complete_file_multipart_upload(object_key, upload_id, parts):
     try:
         response = s3_client.complete_multipart_upload(
@@ -145,6 +137,7 @@ def complete_file_multipart_upload(object_key, upload_id, parts):
         raise
 
 
+# Record each partial upload to s3 into table, along with Etag and part numbers
 def file_upload_record(filename, part, etag):
     response_dynamo = FILES_TABLE.put_item(
                     Item={
@@ -156,23 +149,25 @@ def file_upload_record(filename, part, etag):
     return response_dynamo
 
 
+
+# Check is all files for a genome accession have been uploaded 
 def are_all_files_uploaded(num_files, accession):
-    s3_multipart_destination_folder =  f"MultiPart_Testing/{accession}/fasta"
+    s3_multipart_destination_folder =  f"{accession}/fasta"
 
     try:
-
+        # list all the files uploaded to s3 for genome accession
         response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_multipart_destination_folder)
         
         if 'Contents' not in response:
             print(f"No files found in the folder {s3_multipart_destination_folder}")
             return False
-        
         file_count = 0
         for obj in response['Contents']:
-            # Check if the object is a file (not a folder
+            # Check if the object is a file (not a folder)
             if not obj['Key'].endswith('/'):
                 file_count += 1
-        
+
+        # check is all files have been uploaded
         if file_count == num_files:
             print(f"All {num_files} files are uploaded.")
             return True
@@ -184,10 +179,21 @@ def are_all_files_uploaded(num_files, accession):
         return False
 
 
-
 def lambda_handler(event, context):
     # total_parts = 7
     args,body = recv(event)
+
+    accession = args['Genome']
+    jobid = args['JobID']
+    sequence = args['Sequence']
+
+    body ={ 
+        "Genome": accession, 
+        "Sequence": sequence, 
+        "JobID": jobid
+    }
+
+    json_object = json.dumps(body)
 
     genome_accession = args['genome_accession']
     num_files = args['num_files']
@@ -200,25 +206,30 @@ def lambda_handler(event, context):
     object_key = args['object_key']
 
 
-    #http_response, genome_accession, part_filename, part, filename, upload_id, object_key, num_files = download_part_file(args)
     try:
-        if upload_id != None: # this is a multi-part upload
-            is_stream = False
+        if upload_id != None: # Check if this is a multi-part upload
+            is_stream = False 
+            # Download part of the fasta file
             http_response = download_part_file(filename, file_url, part, start_byte, end_byte, is_stream)
-
+            #Upload part file to S3 and get ETag 
             etag = part_upload_to_s3(http_response, upload_id, part, object_key)
+            # Record Upload in DynamoDB
             response_dynamo = file_upload_record(filename, part, etag)
             print("Item uploaded to S3 and DynamoDB:", response_dynamo)
-
+            
             total_parts = args['parts_per_file']
-
-
+            # Check if all parts of file have been uploaded 
             if all_parts_uploaded(filename, total_parts):
+                # Extract EEtags and part numbers 
                 parts = extract_etags_and_parts(filename)
+                #combine part files
                 response_S3_complete = complete_file_multipart_upload(object_key, upload_id, parts)
                 print(response_S3_complete)
 
+                # check if all fasta files for genome accession have been uploaded 
                 if are_all_files_uploaded(num_files, genome_accession):
+                    sendSQS(ISSL_QUEUE, json_object)
+                    # send it to the ISSL CREATE SQS QUEUE
                     print("All files uploaded. Next Step ready")
                 else:
                     print("All files not uploaded")
@@ -229,11 +240,15 @@ def lambda_handler(event, context):
         else: # this is a normal upload
 
             is_stream = True 
+            # Download the entire file 
             http_response = download_part_file(filename, file_url, part, start_byte, end_byte, is_stream)
-
+            # Stream file to S3
             if upload_to_s3(http_response, object_key):
+                # Check if all files for genome accession have been uploaded
                 if are_all_files_uploaded(num_files, genome_accession):
                     print("All files uploaded. Next Step ready")
+                    sendSQS(ISSL_QUEUE, json_object)
+                    # send it to the ISSL CREATE SQS QUEUE
                 else:
                     print("All files not uploaded")
             else:
@@ -243,7 +258,7 @@ def lambda_handler(event, context):
         print(f"Error processing: {str(e)}")
         return {
             'statusCode': 500,
-            'body': 'Failed to process request'
+            'body': 'Failed to download and upload fasta file'
         }
 
     return 
