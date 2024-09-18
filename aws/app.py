@@ -90,11 +90,39 @@ class CracklingStack(Stack):
 
         
         # S3 Bucket for Genome File storage
+        # s3Genome = s3_.Bucket(self,
+        #     "genomeStorage", 
+        #     removal_policy=RemovalPolicy.DESTROY,
+        #     auto_delete_objects = True
+        # )
+
+
         s3Genome = s3_.Bucket(self,
             "genomeStorage", 
             removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects = True
+            auto_delete_objects=True,
+            cors=[s3_.CorsRule(
+                allowed_methods=[
+                    s3_.HttpMethods.GET,
+                    s3_.HttpMethods.POST,
+                    s3_.HttpMethods.PUT,
+                    s3_.HttpMethods.DELETE,
+                    s3_.HttpMethods.HEAD
+                ],
+                allowed_origins=["*"],
+                allowed_headers=[
+                    "Authorization",
+                    "Content-Type",
+                    "x-amz-security-token",
+                    "x-amz-date",
+                    "x-amz-content-sha256",
+                    "Origin",
+                    "Accept"
+                ],
+                max_age=3000
+            )]
         )
+
 
         # delegate permisions too access point
         s3GenomeAccessPointPolicy = iam_.PolicyStatement.from_json({
@@ -336,8 +364,28 @@ class CracklingStack(Stack):
                 'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name
             }
         )
+
         ddbJobs.grant_read_write_data(lambdaCreateJob)
         ddbTaskTracking.grant_read_write_data(lambdaCreateJob)
+
+        ### Lambda function that return presigned URL to allow users to upload 
+        # custom dataset to s3 genome storage
+        lambdaCustomDataUpload = lambda_.Function(self, "CustomDataUpload", 
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/customData"),
+            layers=[lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            environment={
+                'BUCKET' : s3GenomeAccess.attr_arn,
+                'BUCKET_NAME': s3Genome.bucket_name
+            }
+        )
+        s3Genome.grant_read_write(lambdaCustomDataUpload)   
+        lambdaCustomDataUpload.add_to_role_policy(lambdaS3AccessPointIAM)
+
+
         
         ### Lambda function that organises the parallel download
         # Extracts names and sizes from fasta files in NCBI server
@@ -605,7 +653,11 @@ class CracklingStack(Stack):
         apiRest = api_.RestApi(self, 
             "CracklingRestApi",
             default_cors_preflight_options=api_.CorsOptions(
-                allow_origins=['*']
+                allow_origins=['*'], 
+                 
+                # FUTURE ME: Check if having this is overly permissive. Perhaphs I configure this just for customUpload
+                allow_methods=['GET', 'POST', 'OPTIONS'],  # List allowed methods
+                allow_headers=['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key'] 
             ),
             deploy_options=api_.StageOptions(
                 logging_level=api_.MethodLoggingLevel.ERROR,
@@ -723,6 +775,23 @@ class CracklingStack(Stack):
             "POST",
             api_.LambdaIntegration(lambdaCreateJob)
         )
+
+
+        # /customUpload
+        apiResourceUploadData = apiRest.root.add_resource("customUpload") # returns an `IResource`
+        apiResourceUploadData.add_method( # Adds a `Method` object
+            "GET",
+            api_.LambdaIntegration(lambdaCustomDataUpload)
+        )
+
+
+        # Found to be redundant since it is also being specified at the beginning of the API code
+        # Enable CORS on the API Gateway resource
+        # apiResourceUploadData.add_cors_preflight(
+        #     allow_origins=["*"],  # Specify allowed origins or use "*" to allow all
+        #     allow_methods=["GET"],  # List allowed methods
+        #     allow_headers=["*"],  # List allowed headers or use "*" to allow all
+        # )
 
 
 app = cdk.App()

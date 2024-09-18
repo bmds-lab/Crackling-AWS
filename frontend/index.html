@@ -62,12 +62,28 @@
 							'genome'	: $('#genome').val(),
 							'email'	: $('#email').val()
 						}))
+
+
+                    // change the value of the genome based on 
+                    var useDropdown = $('#toggleDropdown').is(':checked');
+                    var genome;
+
+                    if (useDropdown) {
+                        genome = $('#dropdown').val(); // Use the value from the dropdown
+                    } else {
+                        genome = $('#genome').val(); // Use the value from the input box
+                    }
+
+                    console.log("This is the actual genome:")
+                    console.log(genome)
+
+
 				
 					$.ajax({
 						url: API + '/submit', 
 						data: JSON.stringify({
 							'sequence' 	: $('#sequence').val(),
-							'genome'	: $('#genome').val(),
+							'genome'	: genome,
 							'email'	: $('#email').val()
 						}), 
 						type: "POST", 
@@ -82,6 +98,54 @@
 							M.toast({html: 'Something went wrong: ' + error});
 						}
 					});
+
+								 $('#uploadButton').on('click', function(event) {
+				event.preventDefault(); // Prevent the default form submission
+
+				var fileInput = $('#datasetFile')[0];
+				var file = fileInput.files[0];
+
+				if (!file) {
+					M.toast({html: 'Please select a file to upload.'});
+					return;
+				}
+
+				var fileName = file.name;
+				var fileType = file.type;
+
+				// Get the API URL from the input field
+				var API = $('#txtApiPath').val();
+				var apiUrl = API + "/customUpload";
+
+				// Send file name and type to the API to get a pre-signed URL
+					$.ajax({
+						url: apiUrl + "?file_name=" + encodeURIComponent(fileName) + "&file_type=" + encodeURIComponent(fileType),
+						type: "GET",
+						success: function(data) {
+							var presignedUrl = data.url;
+
+							// Upload the file to S3 using the pre-signed URL
+							$.ajax({
+								url: presignedUrl,
+								type: "PUT",
+								data: file,
+								processData: false,
+								contentType: fileType,
+								success: function() {
+									M.toast({html: 'File uploaded successfully'});
+								},
+								error: function(request, status, error) {
+									M.toast({html: 'Upload failed: ' + error});
+								}
+							});
+						},
+						error: function(request, status, error) {
+							M.toast({html: 'Something went wrong: ' + error});
+						}
+					});
+             	});
+
+
 				});
 				
 				// Get job results
@@ -133,6 +197,57 @@
 						}
 					});
 				});
+
+
+				$('#uploadButton').on('click', function(event) {
+				event.preventDefault(); // Prevent the default form submission
+
+				var fileInput = $('#datasetFile')[0];
+				var file = fileInput.files[0];
+
+				if (!file) {
+					M.toast({html: 'Please select a file to upload.'});
+					return;
+				}
+
+				var fileName = file.name;
+				var fileType = file.type;
+
+				// Get the API URL from the input field
+				var API = $('#txtApiPath').val();
+				var apiUrl = API + "/customUpload";
+
+				var action_1 = "generate_presigned_url"
+
+				// Send file name and type to the API to get a pre-signed URL
+					$.ajax({
+						url: apiUrl + "?file_name=" + encodeURIComponent(fileName) + "&file_type=" + encodeURIComponent(fileType) + "&action=" + encodeURIComponent(action_1),
+						type: "GET",
+						success: function(data) {
+							var presignedUrl = data.url;
+
+							// Upload the file to S3 using the pre-signed URL
+							$.ajax({
+								url: presignedUrl,
+								type: "PUT",
+								data: file,
+								processData: false,
+								contentType: fileType,
+								success: function() {
+									M.toast({html: 'File uploaded successfully'});
+								},
+								error: function(request, status, error) {
+									M.toast({html: 'Upload failed: ' + error});
+								}
+							});
+						},
+						error: function(request, status, error) {
+							M.toast({html: 'Something went wrong: ' + error});
+						}
+					});
+             	});
+
+
 			});
 		</script>
 		
@@ -141,8 +256,13 @@
 		.divContent {  }
 		.cracklingLogo { margin-left: 1em; }
 		.dnaSeq { font-family: Courier New; }
+		.hidden {
+            display: none;
+        }
 		</style>
 	</head>
+
+
 	
 	<body>
 		<div class="nav-wrapper">
@@ -162,6 +282,8 @@
 						<li class="tab col s3"><a href="#tabResults">Retrieve results</a></li>
 						<li class="tab col s3"><a href="#tabSettings">Settings</a></li>
 						<li class="tab col s3"><a href="#tabAbout">About</a></li>
+						<li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li>
+
 					</ul>
 					<ul id="nav-mobile" class="hide-on-med-and-down">
 						<li><a href="sass.html">Sass</a></li>
@@ -223,19 +345,45 @@
 									</span>
 								</div>
 							</div>
-						</div>
+						 </div>
 					
-					
-						<form name="frmSubmitJob" id="frmSubmitJob">
+						 <form name="frmSubmitJob" id="frmSubmitJob">
 							<div class="input-field col s12">
 								<textarea id="sequence" name="sequence" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste your DNA sequence here (not FASTA formatted)">ATCGATCGATCGATCGATCGAGGATCGATCGATCGATCGATCGTGGCCAATCGATCGATCGATCGATCG</textarea>
 								<label for="sequence">Query sequence</label>
 							</div>
-							</br>
-							<div class="input-field col s12">
+
+
+							<p>
+								<label>
+									<input type="checkbox" id="toggleDropdown" onclick="toggleInputs()">
+									<span>Choose Custom Dataset</span>
+								</label>
+							</p>
+
+
+
+
+                            <div class="input-field col s12" id="genomeContainer">
 								<textarea id="genome" name="genome" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste Your NCBI genome accession here">GCA_000482205.1</textarea>
 								<label for="genome">Genome Accession</label>
 							</div>
+
+                            
+							<div class="input-field col s12 hidden" id="dropdownContainer">
+								<form id="dropdownForm" action="#" method="post">
+									<label for="dropdown">Select an Option:</label><br>
+									<select id="dropdown" name="value">
+										<option value="">Select an option</option>
+										<option value="option1">Option 1</option>
+										<option value="option2">Option 2</option>
+										<option value="option3">Option 3</option>
+										<option value="custom">Custom...</option>
+									</select>
+								</form>
+							</div>
+					
+
 						</br>
 							<div class="input-field col s12">
 								<textarea id="email" name="email" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Enter email address to recieve notification upon job completion"></textarea>
@@ -411,6 +559,25 @@
 							</li>
 						</ul>
 					</div>
+
+
+					<!-- Tab - Upload Custom Dataset-->
+
+					<div id="tabUpload" class="col s10">
+
+						<form id="uploadForm" enctype="multipart/form-data">
+							<div class="file-field input-field">
+								<div class="btn">
+									<span>File</span>
+									<input type="file" name="dataset" id="datasetFile" />
+								</div>
+								<div class="file-path-wrapper">
+									<input class="file-path validate" type="text" placeholder="Upload your dataset" />
+								</div>
+							</div>
+							<button type="submit" class="btn" id="uploadButton" name="uploadButton">Upload</button>
+						</form>
+					</div>
 					
 				<!-- End page content -->
 				</div>
@@ -421,5 +588,65 @@
 		<!-- End Material container -->
 		</div>
 	</body>
+
+	<script>
+		
+		function toggleInputs() {
+					console.log("hello this is being run")
+					const isChecked = document.getElementById('toggleDropdown').checked;
+					const genomeContainer = document.getElementById('genomeContainer');
+					const dropdownContainer = document.getElementById('dropdownContainer');
+
+					if (isChecked) {
+
+						var API = $('#txtApiPath').val();
+						var apiUrl = API + "/customUpload";
+						var action_2 = "list_data"
+
+						$.ajax({
+							url: apiUrl + "?action=" + encodeURIComponent(action_2),
+							type: "GET",
+							success: function(data) {
+								var object_keys = data.object_keys;
+
+								console.log(object_keys)
+
+                                var dropdown = $('#dropdown');
+
+								dropdown.empty();
+                    			dropdown.append('<option value="">Select an option</option>');
+
+
+								$.each(object_keys, function(index, key) {
+                        				dropdown.append('<option value="' + key + '">' + key + '</option>');
+								});
+
+								M.FormSelect.init(dropdown);
+
+
+								}, 
+								error: function(xhr, status, error) {
+									console.error('Error fetching S3 object keys:', error);
+								}
+
+							});
+
+						dropdownContainer.classList.remove('hidden');
+						genomeContainer.classList.add('hidden');
+
+					} else {
+
+						dropdownContainer.classList.add('hidden');
+						genomeContainer.classList.remove('hidden');
+					}
+				}
+
+				document.addEventListener('DOMContentLoaded', () => {
+					console.log("hello")
+					toggleInputs();
+					M.AutoInit();
+				});
+
+	</script>
 
 </html>
