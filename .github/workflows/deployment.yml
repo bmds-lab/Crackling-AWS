@@ -1,1 +1,76 @@
 name: Deployment
+
+# Controls when the action will run. 
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-2
+
+      - name: Install Node.js and npm
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y nodejs npm
+
+      - name: Install Node Version Manager (nvm)
+        run: |
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+          source ~/.nvm/nvm.sh
+          nvm install v18.0
+
+      - name: Install AWS CDK
+        run: |
+          npm install -g aws-cdk
+
+      - name: Check AWS CDK Version
+        run: cdk --version
+
+      - name: Install Python3 and pip
+        run: |
+          sudo apt-get install -y python3 python3-pip python3-venv
+
+      - name: Copy shared objects from isslScoreOfftargets
+        run: |
+          ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
+
+      - name: Copy shared objects from RNAfold
+        run: |
+          ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
+
+      - name: Create directory for requests package
+        run: mkdir -p ./layers/requestsPy310Pkgs/python
+
+      - name: Install requests package
+        run: python3 -m pip install --target layers/requestsPy310Pkgs/python requests
+
+      - name: Create directory for NCBI dependencies
+        run: mkdir -p layers/ncbi/python
+
+      - name: Install NCBI dependencies
+        run: python3 -m pip install --target layers/ncbi/python -r layers/ncbi_reqs.txt
+
+      - name: Create virtual environment
+        run: |
+          mkdir -p aws
+          python3 -m venv aws/.venv
+
+      - name: Activate virtual environment and install requirements
+        run: |
+          source aws/.venv/bin/activate
+          pip install -r aws/requirements.txt
+
+        
+
+
+  
