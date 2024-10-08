@@ -96,55 +96,9 @@
 						}, 
 						error: function (request, status, error) {
 							M.toast({html: 'Something went wrong: ' + error});
+							console.log(error)
 						}
 					});
-
-								 $('#uploadButton').on('click', function(event) {
-				event.preventDefault(); // Prevent the default form submission
-
-				var fileInput = $('#datasetFile')[0];
-				var file = fileInput.files[0];
-
-				if (!file) {
-					M.toast({html: 'Please select a file to upload.'});
-					return;
-				}
-
-				var fileName = file.name;
-				var fileType = file.type;
-
-				// Get the API URL from the input field
-				var API = $('#txtApiPath').val();
-				var apiUrl = API + "/customUpload";
-
-				// Send file name and type to the API to get a pre-signed URL
-					$.ajax({
-						url: apiUrl + "?file_name=" + encodeURIComponent(fileName) + "&file_type=" + encodeURIComponent(fileType),
-						type: "GET",
-						success: function(data) {
-							var presignedUrl = data.url;
-
-							// Upload the file to S3 using the pre-signed URL
-							$.ajax({
-								url: presignedUrl,
-								type: "PUT",
-								data: file,
-								processData: false,
-								contentType: fileType,
-								success: function() {
-									M.toast({html: 'File uploaded successfully'});
-								},
-								error: function(request, status, error) {
-									M.toast({html: 'Upload failed: ' + error});
-								}
-							});
-						},
-						error: function(request, status, error) {
-							M.toast({html: 'Something went wrong: ' + error});
-						}
-					});
-             	});
-
 
 				});
 				
@@ -179,7 +133,7 @@
 								if (cCount >= 2) {
 									consensus = '<span style="color: green" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
 								} else {
-									consensus = '<span style="color: red" title="'+cStr+'">Failed ('+cCount+' / 3)</span>';
+									consensus = '<span style="color: red" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
 								}
 								
 								var $tr = $('<tr>').append(
@@ -197,6 +151,7 @@
 						}
 					});
 				});
+
 
 
 				$('#uploadButton').on('click', function(event) {
@@ -217,7 +172,7 @@
 				var API = $('#txtApiPath').val();
 				var apiUrl = API + "/customUpload";
 
-				var action_1 = "generate_presigned_url"
+				var action_1 = "generate_presigned_url";
 
 				// Send file name and type to the API to get a pre-signed URL
 					$.ajax({
@@ -280,9 +235,10 @@
 					<ul class="tabs tabs-transparent">
 						<li class="tab col s3"><a href="#tabSubmit">Submit a job</a></li>
 						<li class="tab col s3"><a href="#tabResults">Retrieve results</a></li>
+						<li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li>
 						<li class="tab col s3"><a href="#tabSettings">Settings</a></li>
 						<li class="tab col s3"><a href="#tabAbout">About</a></li>
-						<li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li>
+						<!-- <li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li> -->
 
 					</ul>
 					<ul id="nav-mobile" class="hide-on-med-and-down">

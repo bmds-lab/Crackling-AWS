@@ -1,6 +1,7 @@
 import json
 import boto3
 import os
+import re
 
 s3_client = boto3.client('s3', region_name='ap-southeast-2', endpoint_url='https://s3.ap-southeast-2.amazonaws.com')
 bucket_name = os.environ['BUCKET_NAME']
@@ -27,7 +28,7 @@ def lambda_handler(event, context):
 
                 presigned_url = s3_client.generate_presigned_url('put_object',
                                                             Params={'Bucket': bucket_name, 
-                                                                    'Key': folder_name+ '/' + 'fasta/' + file_name, 
+                                                                    'Key':   folder_name + '/' + 'fasta/' + file_name, 
                                                                     'ContentType': file_type},
                                                             ExpiresIn=3600)
                 print(presigned_url)
@@ -48,20 +49,17 @@ def lambda_handler(event, context):
             
             elif action == 'list_data':
 
-                #response = s3_client.list_objects_v2(Bucket=bucket_name)
-
 
                 response = s3_client.list_objects_v2(Bucket=bucket_name, Delimiter='/')
-
-                # Extract prefixes (which represent the folders)
                 objects = [prefix['Prefix'].rstrip('/') for prefix in response.get('CommonPrefixes', [])]
-                print("Top-level directories:", objects)
-
-               #objects = [obj['Key'] for obj in response.get('Contents', [])]
+                # remove genomes from NCBI to just show custom datasets 
+                genome_accession_pattern = re.compile(r'^(GCA|GCF)_\d{9}\.\d+$')
+                filtered_objects = [obj for obj in objects if not genome_accession_pattern.match(obj) and obj != 'Test_Packages']
+                print("Top-level custom directories:", filtered_objects)
 
                 return {
                     'statusCode': 200,
-                    'body': json.dumps({'object_keys': objects}),
+                    'body': json.dumps({'object_keys': filtered_objects}),
                     'headers': {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*',
@@ -80,6 +78,10 @@ def lambda_handler(event, context):
                 'error': str(e)
             }),
             'headers': {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
+                
             }
         }

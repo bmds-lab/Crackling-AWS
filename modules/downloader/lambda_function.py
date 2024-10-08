@@ -120,8 +120,13 @@ def file_parts(genome_accession, http_url, fna_file_details, json_object):
             result.append(part_info)
 
         else:
-            num_file_parts = 7   # this detemines how many parts the file is going to split into 
-            part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
+
+            part_size = 50000000 # Maximum size of each part in megabytes
+            num_file_parts = math.ceil(chosen_file_size/ part_size)
+
+
+            # num_file_parts = 7   # this detemines how many parts the file is going to split into 
+            # part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
 
             # initialise the multipart upload
             upload_id = start_part_upload(s3_bucket, genome_accession, chosen_file_name)
