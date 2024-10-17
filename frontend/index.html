@@ -24,6 +24,50 @@
 
 		<!-- Compiled and minified JavaScript -->
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+
+		<!-- Custom CSS for loading spinner -->
+		<style>
+			.loading-circle {
+				border: 8px solid #f3f3f3; 
+				border-top: 8px solid #3498db; 
+				border-radius: 50%;
+				width: 50px;
+				height: 50px;
+				animation: spin 1s linear infinite;
+				margin: 20px auto;
+			}
+	
+			@keyframes spin {
+				0% { transform: rotate(0deg); }
+				100% { transform: rotate(360deg); }
+			}
+	
+			#spinner {
+				display: none;
+				text-align: center;
+			}
+
+			#statusMessage {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 20px;
+            color: #333;
+            display: none; 
+            border-radius: 8px; 
+        }
+
+        .status-label {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .status-results {
+            margin-top: 5px; 
+        }
+
+
+		</style>
             
 		
 		<script>
@@ -121,6 +165,7 @@
 								return 0;
 							}
 							$('#tblResults').find("tr:gt(0)").remove();
+
 							$.each(payload.data, function(i, item) {
 								// todo: tidy this up!!
 								c = item.Consensus.split(',').map(Number);
@@ -131,9 +176,9 @@
 								cCount = c[0] + c[1] + c[2];
 								
 								if (cCount >= 2) {
-									consensus = '<span style="color: green" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
+									consensus = '<span style="color: green" title="'+cStr+'">'+cCount+' / 3</span>';
 								} else {
-									consensus = '<span style="color: red" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
+									consensus = '<span style="color: red" title="'+cStr+'">'+cCount+' / 3</span>';
 								}
 								
 								var $tr = $('<tr>').append(
@@ -145,11 +190,112 @@
 									$('<td>').text(item.IsslScore)
 								).appendTo('#tblResults');
 							});
+
+
+							
+
+							// // Newwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+
+							// var jobStatusHtml = `
+							// 	<p><strong>Job Status</strong></p>
+							// 	<p>JobID: ${payload.jobStatus.JobID}</p>
+							// 	<p>Total Tasks: ${payload.jobStatus.TotalTasks}</p>
+							// 	<p>Completed Tasks: ${payload.jobStatus.CompletedTasks}</p>
+							// 	<p>Version: ${payload.jobStatus.Version}</p>
+							// `;
+							// $('#jobStatus').html(jobStatusHtml);
+
+
+
+							// $.each(payload.data, function(i, item) {
+							// 	// todo: tidy this up!!
+							// 	c = item.Consensus.split(',').map(Number);
+							// 	cStr = "Accepted by:";
+							// 	if (c[0]) { cStr += " CHOPCHOP"; }
+							// 	if (c[1]) { cStr += " mm10db"; }
+							// 	if (c[1]) { cStr += " sgRNAScorer 2.0"; }
+							// 	cCount = c[0] + c[1] + c[2];
+								
+							// 	if (cCount >= 2) {
+							// 		consensus = '<span style="color: green" title="'+cStr+'">'+cCount+' / 3</span>';
+							// 	} else {
+							// 		consensus = '<span style="color: red" title="'+cStr+'">'+cCount+' / 3</span>';
+							// 	}
+								
+							// 	var $tr = $('<tr>').append(
+							// 		$('<td>').text(item.Start),
+							// 		$('<td>').text(item.End),
+							// 		$('<td>').text(item.Strand),
+							// 		$('<td class="dnaSeq">').text(item.Sequence),
+							// 		$('<td>').html(consensus),
+							// 		$('<td>').text(item.IsslScore)
+							// 	).appendTo('#tblResults');
+							// });
 						}, 
 						error: function (request, status, error) {
 							console.log(error);
 						}
 					});
+
+
+					// $.ajax({
+					// 	url: API + '/jobs',  
+					// 	type: "GET",
+					// 	data: { jobid: jobid },  
+					// 	contentType: "application/json",
+					// 	success: function(payload) {
+					// 		// Log the response payload to the console
+					// 		console.log("Response Payload:", payload);
+					// 	},
+					// 	error: function (request, status, error) {
+					// 		console.log("Error:", error);
+					// 	}
+					// });
+
+
+					// Fetch Tasks Data
+					$.ajax({
+						url: API + '/jobs/' + jobid + '/tasks',
+						type: "GET", 
+						contentType: "application/json",
+						success: function(tasksPayload) {
+							if (tasksPayload.recordsTotal == 0) {
+								M.toast({html: 'No task tracking results for this job ID.'});
+							} else {
+								
+								
+								// $('#jobId').text(tasksPayload.JobID);  
+								// $('#totalTasks').text(tasksPayload.TotalTasks);  
+								// $('#completedTasks').text(tasksPayload.CompletedTasks);  
+								// $('#version').text(tasksPayload.Version); 
+								// $('#statusMessage').show();
+
+									// Append task tracking rows to the table
+									// var $tr = $('<tr>').append(
+									// 	$('<td>').text(task.JobID),
+									// 	$('<td>').text(task.TotalTasks),
+									// 	$('<td>').text(task.CompletedTasks),
+									// 	$('<td>').text(task.Version)
+									// ).appendTo('#tblTasks'); 
+
+
+
+								$.each(tasksPayload.data, function(i, task) {
+
+									$('#jobId').text(task.JobID);  
+									$('#totalTasks').text(task.TotalTasks);  
+									$('#completedTasks').text(task.CompletedTasks);  
+									$('#version').text(task.Version); 
+									$('#statusMessage').show()
+
+								});
+							}
+						},
+						error: function() {
+							M.toast({html: 'Error fetching task tracking data.'});
+						}
+					});
+
 				});
 
 
@@ -167,6 +313,19 @@
 
 				var fileName = file.name;
 				var fileType = file.type;
+
+				var isFnaGzFile = fileName.endsWith('.fna.gz');
+				var isGzipped = file.type === 'application/gzip' || file.type === 'application/x-gzip';
+
+				// TO DO; handle other kinds of files i.e. zipped normally, not zipped etc.
+
+				if (!isFnaGzFile || !isGzipped) {
+					M.toast({html: 'Please upload a .fna file that is gzipped (.fna.gz).'});
+					return;
+				}
+
+				$("#spinner").show();
+                M.toast({html: 'File Uploading...', displayLength: 3000});
 
 				// Get the API URL from the input field
 				var API = $('#txtApiPath').val();
@@ -189,14 +348,17 @@
 								processData: false,
 								contentType: fileType,
 								success: function() {
+									$("#spinner").hide();
 									M.toast({html: 'File uploaded successfully'});
 								},
 								error: function(request, status, error) {
+									$("#spinner").hide();
 									M.toast({html: 'Upload failed: ' + error});
 								}
 							});
 						},
 						error: function(request, status, error) {
+							$("#spinner").hide();
 							M.toast({html: 'Something went wrong: ' + error});
 						}
 					});
@@ -330,11 +492,6 @@
 								<form id="dropdownForm" action="#" method="post">
 									<label for="dropdown">Select an Option:</label><br>
 									<select id="dropdown" name="value">
-										<option value="">Select an option</option>
-										<option value="option1">Option 1</option>
-										<option value="option2">Option 2</option>
-										<option value="option3">Option 3</option>
-										<option value="custom">Custom...</option>
 									</select>
 								</form>
 							</div>
@@ -374,6 +531,32 @@
 							</div>
 							
 							</br>
+
+							<!-- <table id="tblTasks" class="striped highlight">
+								<thead>
+									<tr>
+										<th>Job ID</th>
+										<th>Total Tasks</th>
+										<th>Completed Tasks</th>
+										<th>Version</th>
+									</tr>
+								</thead>
+
+								<tbody>
+								</tbody>
+							</table>
+							 -->
+
+					
+							<div id="statusMessage">
+								<div class="status-label">Status:</div>
+								<div class="status-results">
+								Job ID: <span id="jobId"></span>, Total Tasks: <span id="totalTasks"></span>, Completed Tasks: <span id="completedTasks"></span>, Version: <span id="version"></span>
+								</div>
+							</div>
+					
+
+
 							
 							<table name="tblResults" id="tblResults" border="1" class="highlight centered">
 								<thead>
@@ -394,7 +577,8 @@
 					<!-- Tab: Settings -->
 					<div id="tabSettings" class="col s10">
 						<div class="input-field col s6">
-							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="https://22lkohk38b.execute-api.ap-southeast-2.amazonaws.com/CracklingProductionApi" data-position="bottom">
+							<!-- <input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="https://22lkohk38b.execute-api.ap-southeast-2.amazonaws.com/CracklingProductionApi" data-position="bottom"> -->
+							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="{{API_URL}}" data-position="bottom">
 							<label for="txtApiPath">Crackling API URL</label>
 						</div>
 					</div>
@@ -533,6 +717,10 @@
 							</div>
 							<button type="submit" class="btn" id="uploadButton" name="uploadButton">Upload</button>
 						</form>
+
+						<div id="spinner">
+							<div class="loading-circle"></div>
+						</div>
 					</div>
 					
 				<!-- End page content -->
@@ -570,7 +758,7 @@
                                 var dropdown = $('#dropdown');
 
 								dropdown.empty();
-                    			dropdown.append('<option value="">Select an option</option>');
+                    			// dropdown.append('<option value="">Select an option</option>');
 
 
 								$.each(object_keys, function(index, key) {

@@ -3,9 +3,11 @@ import boto3
 import os
 import re
 
-s3_client = boto3.client('s3', region_name='ap-southeast-2', endpoint_url='https://s3.ap-southeast-2.amazonaws.com')
+#s3_client = boto3.client('s3', region_name='ap-southeast-2', endpoint_url='https://s3.ap-southeast-2.amazonaws.com')
 bucket_name = os.environ['BUCKET_NAME']
+region_name = os.environ['REGION_NAME']
 
+s3_client = boto3.client('s3', region_name=region_name, endpoint_url=f'https://s3.{region_name}.amazonaws.com')
 
 # TO DO: For new files that are uploaded to s3, ensure their names have .fna in them otherwise will result in error
 # or take out the error

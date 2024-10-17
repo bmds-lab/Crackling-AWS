@@ -27,13 +27,20 @@ from aws_cdk import (
     aws_cloudfront as cloudfront_,
     aws_cloudfront_origins as origins_,
     aws_s3_notifications as s3_notify,
-)
+    custom_resources as cr,
+    Aws,
+    DefaultStackSynthesizer
+)     
+
+from constructs import Construct
 
 
 
 version = "-Dev"
+# availabilityZone = "ap-southeast-2a"
 
-availabilityZone = "ap-southeast-2a"
+account_number = Aws.ACCOUNT_ID
+availabilityZone = Aws.REGION
 
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
@@ -57,7 +64,7 @@ class CracklingStack(Stack):
             },
           
             nat_gateways=1,
-            availability_zones=[availabilityZone],
+            #availability_zones=[availabilityZone],
             
         )
 
@@ -71,30 +78,15 @@ class CracklingStack(Stack):
             auto_delete_objects = True,
             block_public_access = s3_.BlockPublicAccess.BLOCK_ACLS,
         )
-        s3FrontendDeploy = s3d_.BucketDeployment(
-            self, "DeployFrontend",
-            sources=[
-                s3d_.Source.asset("../frontend")
-            ],
-            destination_bucket=s3Frontend,
-            
-            # destination_key_prefix="web/static",
-            retain_on_delete=False
-        )
+
 
         CracklingDistribution = cloudfront_.Distribution(self, "CracklingCloudfrontDistribution",
             default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(s3Frontend))
         )
+
         cloudfront_url = CracklingDistribution.distribution_domain_name
         cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
 
-        
-        # S3 Bucket for Genome File storage
-        # s3Genome = s3_.Bucket(self,
-        #     "genomeStorage", 
-        #     removal_policy=RemovalPolicy.DESTROY,
-        #     auto_delete_objects = True
-        # )
 
 
         s3Genome = s3_.Bucket(self,
@@ -137,7 +129,7 @@ class CracklingStack(Stack):
             ],
             "Condition": {
                 "StringEquals": {
-                    "s3:DataAccessPointAccount": "377188290550" #this is the account number
+                    "s3:DataAccessPointAccount": account_number #this is the account number
                 }
             }
         })
@@ -220,15 +212,6 @@ class CracklingStack(Stack):
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        # ### Lambda layer containing python3.8 packages
-        # lambdaLayerPythonPkgs = lambda_.LayerVersion(self, "python38pkgs",
-        #     code=lambda_.Code.from_asset("../layers/consensusPy38Pkgs"),
-        #     removal_policy=RemovalPolicy.DESTROY,
-        #     compatible_architectures=[lambda_.Architecture.X86_64],
-        #     compatible_runtimes=[
-        #         lambda_.Runtime.PYTHON_3_10
-        #     ]
-        # )
 
         ### Lambda layer containing python3.10 packages for rques
         lambdaLayerRequests = lambda_.LayerVersion(self, "requests",
@@ -379,7 +362,8 @@ class CracklingStack(Stack):
             vpc=cracklingVpc,
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
-                'BUCKET_NAME': s3Genome.bucket_name
+                'BUCKET_NAME': s3Genome.bucket_name,
+                'REGION_NAME': availabilityZone
             }
         )
         s3Genome.grant_read_write(lambdaCustomDataUpload)   
@@ -648,14 +632,14 @@ class CracklingStack(Stack):
 
 
         ### API
-        # This handles the staging and deployment of the API. A CloudFormation output is generated with the API URL.
+        # This handles the staging and deployment of the API. A ClouydFormation output is generated with the API URL.
         # Enable cross-origin resource sharing (CORS).
         apiRest = api_.RestApi(self, 
             "CracklingRestApi",
             default_cors_preflight_options=api_.CorsOptions(
-                allow_origins=['*'], 
+                allow_origins=["*"], 
                  
-                # FUTURE ME: Check if having this is overly permissive. Perhaphs I configure this just for customUpload
+                # FUTURE ME: Check if having this is overly permissive. Perhaps I configure this just for customUpload
                 allow_methods=['GET', 'POST', 'OPTIONS'],  # List allowed methods
                 allow_headers=['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key'] 
             ),
@@ -690,12 +674,14 @@ class CracklingStack(Stack):
                                 statements=[
                                     iam_.PolicyStatement(
                                         actions=[
-                                            "dynamodb:GetIem",
+                                            "dynamodb:GetItem",
                                             "dynamodb:GetRecords",
                                             "dynamodb:Query"
                                         ],
                                         resources=[
-                                            ddbTargets.table_arn
+                                            ddbTargets.table_arn,
+                                            ddbTaskTracking.table_arn  # Include the job status table ARN
+
                                         ],
                                         effect=iam_.Effect.ALLOW
                                     )
@@ -717,6 +703,8 @@ class CracklingStack(Stack):
                              '}'
                         )
                     },
+
+                    
                     integration_responses=[
                         api_.IntegrationResponse(
                             status_code='200',
@@ -739,6 +727,8 @@ class CracklingStack(Stack):
                                         '}'
                                     )
                             },
+
+                        
                             response_parameters={
                                 # double quote the values in this dict, as per the documentation:
                                 #   "You must enclose static values in single quotation marks"
@@ -769,6 +759,101 @@ class CracklingStack(Stack):
             ]
         )
 
+
+            # Path: /jobs/{job-id}/tasks
+        apiResourceResultsIdTasks = apiRest.root.add_resource("jobs") \
+        .add_resource("{jobid}") \
+        .add_resource("tasks")  # returns an `IResource`
+
+
+        apiResourceResultsIdTasks.add_method(  
+        "GET",
+        api_.AwsIntegration(
+            service="dynamodb",
+            action="Query",
+            options=api_.IntegrationOptions(
+                credentials_role=iam_.Role(
+                    self, "roleApiGetTasksDdb",
+                    assumed_by=iam_.ServicePrincipal("apigateway.amazonaws.com"),
+                    inline_policies={
+                        'readDynamoDB': iam_.PolicyDocument(
+                            statements=[
+                                iam_.PolicyStatement(
+                                    actions=[
+                                        "dynamodb:GetItem",
+                                        "dynamodb:GetRecords",
+                                        "dynamodb:Query"
+                                    ],
+                                    resources=[
+                                        ddbTaskTracking.table_arn  # Query the tasks table
+                                    ],
+                                    effect=iam_.Effect.ALLOW
+                                )
+                            ]
+                        )
+                    }
+                ),
+                passthrough_behavior=api_.PassthroughBehavior.WHEN_NO_TEMPLATES,
+                request_templates={
+                    'application/json': (
+                        '{'
+                        f'   "TableName": "{ddbTaskTracking.table_name}",'  # Query for the tasks table
+                        '    "KeyConditionExpression": "JobID = :v1",'
+                        '    "ExpressionAttributeValues": {'
+                        '        ":v1": {"S": "$input.params(\'jobid\')"}'
+                        '    }'
+                        '}'
+                    )
+                },
+                integration_responses=[
+                    api_.IntegrationResponse(
+                        status_code='200',
+                        response_templates={
+                            'application/json': (
+                                "#set($allTasks = $input.path('$.Items'))"
+                                '{'
+                                '"recordsTotal": $allTasks.size(),'
+                                '"data": ['
+                                '   #foreach($task in $allTasks) {'
+                                '       "JobID": "$task.JobID.S",'
+                                '       "TotalTasks": "$task.TotalTasks.S",'
+                                '       "CompletedTasks": "$task.CompletedTasks.N",'
+                                '       "Version": "$task.Version.N"'
+                                '   }#if($foreach.hasNext),#end'
+                                '   #end'
+                                ']'
+                                '}'
+                            )
+                        },
+                        response_parameters={
+                            'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
+                            'method.response.header.Access-Control-Allow-Methods': "'POST,OPTIONS'",
+                            'method.response.header.Access-Control-Allow-Origin': "'*'"
+                        },
+                    )
+                ]
+            )
+        ),
+        request_parameters={
+            'method.request.path.proxy': True
+        },
+        method_responses=[
+            api_.MethodResponse(
+                response_models={
+                    'application/json': api_.Model.EMPTY_MODEL
+                },
+                response_parameters={
+                    'method.response.header.Access-Control-Allow-Headers': True,
+                    'method.response.header.Access-Control-Allow-Methods': True,
+                    'method.response.header.Access-Control-Allow-Origin': True
+                },
+                status_code='200'
+            )
+        ]
+    )
+
+
+
         # /submit
         apiResourceSubmitJob = apiRest.root.add_resource("submit") # returns an `IResource`
         apiResourceSubmitJob.add_method( # Adds a `Method` object
@@ -785,15 +870,84 @@ class CracklingStack(Stack):
         )
 
 
-        # Found to be redundant since it is also being specified at the beginning of the API code
-        # Enable CORS on the API Gateway resource
-        # apiResourceUploadData.add_cors_preflight(
-        #     allow_origins=["*"],  # Specify allowed origins or use "*" to allow all
-        #     allow_methods=["GET"],  # List allowed methods
-        #     allow_headers=["*"],  # List allowed headers or use "*" to allow all
-        # )
+        apiRest_url = apiRest.url  # Make sure this variable is defined before use
+
+
+        replace_api_url_lambda = lambda_.Function(
+            self, "ReplaceApiUrlLambda",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
+            code=lambda_.Code.from_asset("../modules/updateApiUrl"),
+            vpc=cracklingVpc,
+            environment={
+                "BUCKET_NAME": s3Frontend.bucket_name,
+                "OBJECT_KEY": "index.html",
+                "NEW_API_URL": apiRest_url,
+                "CLOUDFRONT_DISTRIBUTION_ID": CracklingDistribution.distribution_id
+            }, 
+        )
+
+
+        s3Frontend.grant_read_write(replace_api_url_lambda)
+
+        s3FrontendDeploy = s3d_.BucketDeployment(
+            self, "DeployFrontend",
+            sources=[s3d_.Source.asset("../frontend")],
+            destination_bucket=s3Frontend,
+            retain_on_delete=False
+        )
+              
+        update_resource = cr.AwsCustomResource(self, "UpdateHtmlResource",
+            on_create={
+                "service": "Lambda",
+                "action": "invoke",
+                "parameters": {
+                    "FunctionName": replace_api_url_lambda.function_arn,
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
+            },
+
+            on_update={
+            "service": "Lambda",
+            "action": "invoke",
+            "parameters": {
+            "FunctionName": replace_api_url_lambda.function_arn,
+             }, 
+             "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
+
+            },
+            policy=cr.AwsCustomResourcePolicy.from_statements([
+                iam_.PolicyStatement(
+                    actions=["lambda:InvokeFunction"],
+                    resources=[replace_api_url_lambda.function_arn],
+                ), 
+                iam_.PolicyStatement(
+                    actions=["cloudfront:CreateInvalidation"],
+                    resources=["*"],
+        )
+            ])
+        )
+
+        # s3FrontendDeploy.node.add_dependency(update_resource)
+        update_resource.node.add_dependency(s3FrontendDeploy)
+        
+
 
 
 app = cdk.App()
-CracklingStack(app, f"CracklingStack{version}")
+# CracklingStack(app, f"CracklingStack{version}")
+
+CracklingStack(app, f"CracklingStack{version}", synthesizer=DefaultStackSynthesizer(
+        file_assets_bucket_name="a-public-facing-bucket-n10753753"
+    ) )
+
+# CracklingStack(
+#     app, 
+#     "CracklingStackWithAssetBucketParam",
+#     synthesizer=DefaultStackSynthesizer(
+#         file_assets_bucket_name=cdk.CfnParameter(app, "FileAssetsBucketName", type="String").value_as_string
+#     )
+# )
+
 app.synth()
