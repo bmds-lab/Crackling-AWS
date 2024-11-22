@@ -1,24 +1,11 @@
-import json
-import boto3
-import os
-import tempfile
-import glob
-#import joblib
-import re
-import ast
+import ast, glob, json, os, re, shutil, subprocess, sys, tempfile, zipfile
+from subprocess import call
 from time import time_ns
 
-#from sklearn.svm import SVC
-from subprocess import call
+import boto3
 from common_funcs import *
 
-
-import subprocess 
-import sys, zipfile, io, shutil
-
 s3_bucket = os.environ['BUCKET']
-
-
 
 ######################## Setting up python packages required to run model ##################################
 
@@ -178,7 +165,6 @@ SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
 call(f"cp -r /opt/rnaFold /tmp/rnaFold".split(' '))
 call(f"chmod -R 755 /tmp/rnaFold".split(' '))
 BIN_RNAFOLD = r"/tmp/rnaFold/RNAfold"
-#os.chmod(BIN_RNAFOLD, 755)
 
 low_energy_threshold = -30
 high_energy_threshold = -18
@@ -186,7 +172,6 @@ high_energy_threshold = -18
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 task_tracking_table_name = os.getenv('TASK_TRACKING_TABLE')
 consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
-notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
 sqs_client = boto3.client('sqs')
 
@@ -406,10 +391,7 @@ def lambda_handler(event, context):
                 job_tasks.update({result['JobID'] : 1})
             else:
                 job_tasks[result['JobID']] += 1
-        
-            #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
-        
-    
+
     # remove messages from the SQS queue. Max 10 at a time.
     for i in range(0, len(ReceiptHandles), 10):
         toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
@@ -424,12 +406,9 @@ def lambda_handler(event, context):
             ]
         )
 
-    # Update task counter for each job, and spawn a notification if a job is completed    
+    # Update task counter for each job
     for jobID, task_count in job_tasks.items():
         job = update_task_counter(dynamodb, task_tracking_table_name, jobID, task_count)
-
-        #notify user if job is completed
-        spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
 
     return (event)
     
