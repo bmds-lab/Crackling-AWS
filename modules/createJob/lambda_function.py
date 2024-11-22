@@ -1,9 +1,8 @@
-import boto3, json, uuid, os, time
+import boto3, json, uuid, os
 
-from time import time,time_ns, sleep
+from time import time
 from datetime import datetime
 from common_funcs import *
-
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
@@ -60,7 +59,7 @@ def lambda_handler(event, context):
     taskTrackingTable.put_item(
         Item={
             'JobID' : jobid,
-            'TotalTasks' : "Creating",
+            'TotalTasks' : 'Creating',
             'CompletedTasks' : 0,
             'Version': 0
         }
@@ -68,8 +67,7 @@ def lambda_handler(event, context):
     
     body = json.dumps({
         'aws_request_id' : context.aws_request_id,
-        'JobID' : jobid,
-        'Genome' : genome # for debug
+        'JobID' : jobid
     })
 
     

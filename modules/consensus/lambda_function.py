@@ -1,4 +1,4 @@
-import ast, glob, json, os, re, shutil, subprocess, sys, tempfile, zipfile
+import ast, glob, io, json, os, re, shutil, subprocess, sys, tempfile, zipfile
 from subprocess import call
 from time import time_ns
 
@@ -68,14 +68,6 @@ def install_and_upload_sklearn_to_s3(s3_bucket, s3_key, package_name='scikit-lea
             shutil.rmtree(temp_dir)
         except Exception as cleanup_error:
             print(f"Failed to remove temporary directory")
-
-def get_directory_size(directory):
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(directory):
-        for filename in filenames:
-            filepath = os.path.join(dirpath, filename)
-            total_size += os.path.getsize(filepath)
-    return total_size
     
 def handle_sklearn_package():
 
@@ -87,7 +79,6 @@ def handle_sklearn_package():
     print(f"Created temporary folder {temp_dir_py}")
     
     try:
-        
         response = s3_client.get_object(Bucket=bucket_name, Key=zip_file_key)
         zip_content = response['Body'].read()
         zip_size = len(zip_content)
@@ -104,10 +95,6 @@ def handle_sklearn_package():
         print(f"unzipping file to temporary directory: {temp_dir_py}")
         with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
             z.extractall(temp_dir_py)
-        
-
-        dir_size_py = get_directory_size(temp_dir_py)
-        print(f"size of unzipped directory {dir_size_py} bytes")
 
         python_dir = temp_dir_py
         sys.path.insert(0, python_dir) # add path to python packages to system path
@@ -364,10 +351,7 @@ def lambda_handler(event, context):
             
         ReceiptHandles.append(record['receiptHandle'])
 
-    print(recordsByJobID)
     results = CalcConsensus(recordsByJobID)
-    print(results)
-
 
     # track number of tasks completed for each job by counting instances of each jobID
     job_tasks = {}

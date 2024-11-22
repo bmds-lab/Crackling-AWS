@@ -113,26 +113,13 @@ def isslcreate(accession, tmp_fasta_dir):
     offtargetfn = os.path.join(tmp_dir,f"{accession}.offtargets")
     print(f"Creating: {offtargetfn}")
 
-    # Extract offtargets
-    print("Extracting off target sequences...",end='')
-    time_1 = time()
-
     # Lambda code
-    extractOfftargets.startSequentalprocessing([tmp_fasta_dir],offtargetfn,1,100)
+    extractOfftargets.startSequentalprocessing([tmp_fasta_dir], offtargetfn, 1, 100)
     isslBin = "/opt/ISSL/isslCreateIndex"
-   
-    time_2 = time()
 
-    print(f"Done. Time to extract offtargets: {(time_2-time_1)}.",
-    '\n\nRunning: createIsslIndex... ')
+    issl_path = os.path.join(tmp_dir, f"{accession}.issl")
 
-    # Run isslcreation
-    issl_path = os.path.join(tmp_dir,f"{accession}.issl")
-    
-    time_1 = time()
     os.system(f"{isslBin} {offtargetfn} 20 8 {issl_path}")
-    time_2 = time()
-    print(f"\n\nTime to create issl index: {(time_2-time_1)}.\n")
 
     #upload files to s3 -future me: isslOfftarget probably not required
     s3_destination_path = f"{accession}/issl"
@@ -160,9 +147,6 @@ def lambda_handler(event, context):
     
     #check that file size meets current limitations - 600MB file
     _ = fasta_size_check(accession)
-
-    # Download from s3 based on accession
-    ##tmp_dir_fasta, tmp_dir = s3_file_to_tmp(s3_client, s3_bucket, accession)
 
     tmp_dir_fasta, tmp_dir = s3_multi_file_to_tmp(s3_client, s3_bucket, accession)
 
