@@ -299,6 +299,7 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=Duration.minutes(30)
         )
+        
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
         # The consensus lambda function processes items in this queue
@@ -309,14 +310,6 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=duration
         )
-
-        sqsNotification = sqs_.Queue(
-            self,
-            "sqsNotification", 
-            receive_message_wait_time=Duration.seconds(1),
-            visibility_timeout=duration,
-            retention_period=duration
-            )
 
         ### Lambda function that acts as the entry point to the application.
         # This function creates a record in the DynamoDB jobs table.
@@ -474,14 +467,12 @@ class CracklingStack(Stack):
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url,
-                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'PATH' : path
             }
         )
-        sqsNotification.grant_send_messages(lambdaTargetScan)
         sqsTargetScan.grant_consume_messages(lambdaTargetScan)
         ddbTargets.grant_read_write_data(lambdaTargetScan)
         ddbTaskTracking.grant_read_write_data(lambdaTargetScan)
@@ -510,7 +501,6 @@ class CracklingStack(Stack):
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
-                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'CONSENSUS_QUEUE' : sqsConsensus.queue_url, 
                 'BUCKET' : s3GenomeAccess.attr_arn
             }
@@ -520,7 +510,6 @@ class CracklingStack(Stack):
         s3Genome.grant_read_write(lambdaConsensus)   
         lambdaConsensus.add_to_role_policy(lambdaS3AccessPointIAM)
 
-        sqsNotification.grant_send_messages(lambdaConsensus)
         sqsConsensus.grant_consume_messages(lambdaConsensus)
         lambdaConsensus.add_event_source_mapping(
             "mapLdaConsesusSqsConsensus",
@@ -551,14 +540,12 @@ class CracklingStack(Stack):
                 'TARGETS_TABLE' : ddbTargets.table_name,
                 'JOBS_TABLE' : ddbJobs.table_name,
                 'ISSL_QUEUE' : sqsIssl.queue_url,
-                'NOTIFICATION_QUEUE' : sqsNotification.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
             }
         )
         sqsIssl.grant_consume_messages(lambdaIssl)
         sqsIssl.grant_send_messages(lambdaIssl)
-        sqsNotification.grant_send_messages(lambdaIssl)
         lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
@@ -570,48 +557,6 @@ class CracklingStack(Stack):
         ddbTargets.grant_read_write_data(lambdaIssl)
         s3Genome.grant_read_write(lambdaIssl)
         lambdaIssl.add_to_role_policy(lambdaS3AccessPointIAM)
-
-
-        # Lambda Notifier
-        # Consumes message from notification que
-        # sends email to user
-        lambdaNotifier = lambda_.Function(self, "Notifier", 
-            runtime=lambda_.Runtime.PYTHON_3_10,
-            handler="lambda_function.lambda_handler",
-            code=lambda_.Code.from_asset("../modules/notifier"),
-            layers=[lambdaLayerCommonFuncs],
-            vpc=cracklingVpc,
-            timeout= duration,
-            ephemeral_storage_size = cdk.Size.gibibytes(10),
-            environment={
-                'JOBS_TABLE' : ddbJobs.table_name,
-                'BUCKET' : s3GenomeAccess.attr_arn,
-                'PATH' : path,
-                'FRONTEND_URL': cloudfront_url
-            },
-        )
-        sqsNotification.grant_consume_messages(lambdaNotifier)
-        ddbJobs.grant_read_write_data(lambdaNotifier)
-        lambdaNotifier.add_event_source_mapping(
-            "mapLdaNotifierSqsNotification",
-            event_source_arn=sqsNotification.queue_arn,
-            batch_size=1
-        )
-        
-        #create role for SES access
-        ses_policy_statement = iam_.PolicyStatement(
-            effect=iam_.Effect.ALLOW,
-            actions=[
-                "ses:SendEmail",
-                "ses:SendRawEmail",
-                # Add other SES actions you need here
-            ],
-            resources=["*"],  # You can restrict this to specific SES resources if needed
-        )
-
-        # Add the SES policy statement to the Lambda function's role
-        lambdaNotifier.role.add_to_policy(ses_policy_statement)
-
 
         ### API
         # This handles the staging and deployment of the API. A ClouydFormation output is generated with the API URL.
