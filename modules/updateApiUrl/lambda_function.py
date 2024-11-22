@@ -12,14 +12,11 @@ def lambda_handler(event, context):
 
     
     response = s3.get_object(Bucket=bucket_name, Key=object_key)
-    print(response)
+
     index_html_content = response['Body'].read().decode('utf-8')
-    print(new_api_url)
-    
+
     updated_content = index_html_content.replace("{{API_URL}}", new_api_url)
     s3_put_reposnse = s3.put_object(Bucket=bucket_name, Key='index.html', Body=updated_content, ContentType='text/html')
-    print(s3_put_reposnse)
-
 
     invalidation_response = cloudfront.create_invalidation(
         DistributionId=distribution_id,
@@ -35,7 +32,6 @@ def lambda_handler(event, context):
     )
     print("Invalidation Response:", invalidation_response)
 
-    print("helloooooo")
     return {
         'statusCode': 200,
         'body': 'index.html updated successfully'
