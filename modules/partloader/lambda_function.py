@@ -228,7 +228,7 @@ def lambda_handler(event, context):
 
                 # check if all fasta files for genome accession have been uploaded 
                 if are_all_files_uploaded(num_files, genome_accession):
-                    sendSQS(ISSL_QUEUE, json_object)
+                    send_sqs(ISSL_QUEUE, json_object)
                     # send it to the ISSL CREATE SQS QUEUE
                     print("All files uploaded. Next Step ready")
                 else:
@@ -247,7 +247,7 @@ def lambda_handler(event, context):
                 # Check if all files for genome accession have been uploaded
                 if are_all_files_uploaded(num_files, genome_accession):
                     print("All files uploaded. Next Step ready")
-                    sendSQS(ISSL_QUEUE, json_object)
+                    send_sqs(ISSL_QUEUE, json_object)
                     # send it to the ISSL CREATE SQS QUEUE
                 else:
                     print("All files not uploaded")
@@ -265,5 +265,5 @@ def lambda_handler(event, context):
 
 
 if __name__== "__main__":
-    event, context = main()
+    event, context = local_lambda_invocation()
     lambda_handler(event, context)

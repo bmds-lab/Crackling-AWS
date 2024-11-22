@@ -10,114 +10,8 @@ from botocore.exceptions import ClientError
 starttime = time_ns()
 timeout = 10800
 
-# s3_try_lock variables
-s3_lock_attempts = 15
-lock_delay = 0.15
-
-# try to get mutex write lock, error after specified no. of attempts
-def s3_try_lock(s3_client,s3_bucket,accession):
-    count = 0
-    while count<s3_lock_attempts:
-        try:
-            s3_client.head_object(Bucket=s3_bucket, Key=accession)
-        except ClientError:
-            s3_client.put_object(
-                Bucket=s3_bucket,
-                Key=accession
-            )
-            return True
-        count +=1
-        sleep(lock_delay)
-    raise RuntimeError("s3 csv file locked") 
-
-# delete s3 file
-def s3_delete(s3_client,bucket,accession):
-    s3_client.delete_object(
-        Bucket=bucket,
-        Key=accession
-    )
-
-# unlock s3 csv writing
-def s3_unlock(s3_client,s3_bucket,accession):
-    s3_delete(s3_client,s3_bucket,accession)
-
-# Create .notif files for s3check module to use
-def s3_success(s3_client,s3_bucket,accession,body):
-    accession = f'{accession}.notif'
-    print(f"s3 success. Creating {accession}.")
-    s3_client.put_object(
-        Body=body.encode('ascii'),
-        Bucket=s3_bucket,
-        Key=os.path.join(accession,accession)
-    )
-
 def get_tmp_dir():
     return tempfile.mkdtemp()
-
-def get_named_tmp_file():
-    return tempfile.NamedTemporaryFile()
-
-def create_csv_if_not_exist(s3_client, s3_bucket, filename):
-    try:
-        s3_client.head_object(Bucket=s3_bucket, Key=filename)
-    except ClientError:
-        file = tempfile.NamedTemporaryFile()
-        f = open(file.name, 'a')
-        f.write("datetime,genome,filesize,downloadtime")
-        f.close()
-        s3_client.upload_file(file.name, s3_bucket, filename)
-        file.close()
-
-# Add info about run to csv file for logging
-def s3_csv_append(s3_client,s3_bucket,accession,filesize,Time,csv_fn,lock_key):
-    string = f'\n{datetime.now()},{accession},{filesize},{Time}'
-    file = tempfile.NamedTemporaryFile()
-    
-    #file lock
-    time_1 = time()
-    if s3_try_lock(s3_client,s3_bucket,lock_key):
-        #create csv file if not exists
-        try:
-            create_csv_if_not_exist(s3_client,s3_bucket,csv_fn)
-        except Exception as e:
-            print(f"{type(e)}: {e}")
-            file.close()
-            s3_unlock(s3_client, lock_key)
-            return
-        #download file from s3    
-        file_content = s3_client.get_object(
-            Bucket=s3_bucket, Key=csv_fn)["Body"].read()
-        #write filecontent binary data to fileobj then close
-        f = open(file.name, 'wb')
-        f.write(file_content)
-        f.close()
-        # reopen file in text appending mode and write new data
-        f = open(file.name, 'a')
-        f.write(string)
-        f.close()
-        # overwrite old file with new appended file.
-        s3_client.upload_file(file.name, s3_bucket, csv_fn)
-        s3_unlock(s3_client,s3_bucket,lock_key)
-        time_2 = time()
-        print(f"Appending to csv: \"{string}\"")
-        print(f'Time to append s3file: {(time_2-time_1)} sec.')
-    file.close()
-
-# return genome size from s3 file storage
-def s3_fasta_dir_size(s3_client,s3_bucket,path):
-    filesize = 0
-    paginator = s3_client.get_paginator("list_objects_v2")
-    response = paginator.paginate(Bucket=s3_bucket, Prefix=path, 
-        PaginationConfig={"PageSize": 1000})
-    for page in response:
-        files = page.get("Contents")
-        if files is None:
-            return 0
-        for file in files:
-            if ".fa" in file['Key']:
-                filesize += file['Size']
-    return filesize
-
 
 ##########################################################
 def s3_fna_dir_size(s3_client,s3_bucket,path):
@@ -144,46 +38,6 @@ def s3_get_file_size(s3_client, s3_bucket, path):
     filesize = response['ContentLength']
     return filesize
 
-
-# download fasta files from S3 bucket to tmp directory and return csv string of fasta tmp filepaths
-def s3_files_to_tmp_old(s3_client,s3_bucket,accession,suffix=".fa"):
-    tmpArr = tempfile.mkdtemp()
-    names = []
-    print(s3_bucket)
-    paginator = s3_client.get_paginator("list_objects_v2")
-    response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
-        PaginationConfig={"PageSize": 1000})
-    for page in response:
-        files = page.get("Contents")
-        for file in files:
-            filename = file['Key']
-            if suffix in filename:
-                # get file name
-                name = re.search(r'([^\/]+$)',filename).group(0)
-                name = f"{tmpArr}/{name}"
-                names.append(name)
-                #download file from s3    
-                file_content = s3_client.get_object(
-                    Bucket=s3_bucket, Key=filename)["Body"].read()
-                # write files to tmp
-                f = open(name, 'wb')
-                f.write(file_content)
-                f.close()
-                print(f"Downloaded to: {name}")
-    print("Files from s3 bucket: ",tmpArr)
-    return tmpArr, ','.join(names)
-
-# return csv string of fasta tmp filepaths
-def list_tmp(tmp_dir):
-    print("Files in tmp directory: ",tmp_dir)
-    names = []
-    tmpArr = os.listdir(tmp_dir)
-    for filename in tmpArr:
-        name = re.search(r'([^\/]+$)',filename).group(0)
-        name = f"{tmp_dir}/{name}"
-        names.append(name)
-    return tmpArr, ','.join(names)
-
 # Upload directory of files to S3 bucket
 def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     #upload files individually to s3
@@ -198,44 +52,7 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
     # close temp directory
     print("Cleaning Up...")
     shutil.rmtree(path)
-    
-
-#### HELPER FUNCTIONS
-def clean_s3_folder(s3_client, s3_bucket, accession):
-    try:
-        paginator = s3_client.get_paginator("list_objects_v2")
-        response = paginator.paginate(Bucket=s3_bucket, Prefix=accession, 
-            PaginationConfig={"PageSize": 1000})
-        for page in response:
-            files = page.get("Contents")
-            for filename in files:
-                print(filename)
-                s3_client.delete_object(
-                    Bucket=s3_bucket,
-                    Key=filename
-                )
-        print("cleaned-up s3 folder after download failure")
-    except ParamValidationError as aa:
-        print("verified clean-up of s3 folder after download failure")
-    except Exception as e:
-        print(f"{type(e)}: {e}")
-
-def is_fasta_in_s3(s3_client, s3_bucket, accession):
-    try:
-        paginator = s3_client.get_paginator("list_objects_v2")
-        response = paginator.paginate(Bucket=s3_bucket, Prefix=accession,PaginationConfig={"PageSize": 1000})
-        for page in response:
-            files = page.get("Contents")
-            if len(files) > 0:
-                print(f"{accession} exists in s3")
-                return True
-            else:
-                print(f"{accession} does not exist in s3")
-                return False
-    except Exception as e:
-        print(f"{type(e)}: {e}")
-        return False
-
+     
 def s3_object_exists(s3_client, s3_bucket, key):
     try:
         s3_client.head_object(Bucket=s3_bucket, Key=key)
@@ -271,28 +88,8 @@ def files_exist_s3_dir(s3_client, s3_bucket, s3_path, files_to_expect):
             return False
     return True
 
-# Provide list of files to check if they exist in a directory
-def file_exist(path, files_to_expect):
-    # expected files exist
-    for file in files_to_expect:
-        file_path = f"{path}/{file}"
-        #any file missing means failure
-        if not os.path.isfile(file_path):
-            return False
-    return True
-
-# Thread task to write to csv if about to run out of execution time
-def thread_task(accession, context, filesize, s3_client, s3_bucket, csv_fn, lock_key):
-    testtime = time_ns()
-    delay = context.get_remaining_time_in_millis()*.995-(s3_lock_attempts*lock_delay*1000)
-    delay = 0 if delay < 0 else delay
-    sleep(delay)
-    testtime = time_ns()
-    string = f'Your out of touch I\'m out of time(exec time > {testtime - starttime})'
-    s3_csv_append(s3_client, s3_bucket, accession, filesize, string, csv_fn, lock_key)
-
 # Send SQS message
-def sendSQS(sqsURL,msg):
+def send_sqs(sqsURL,msg):
     sqs = boto3.client('sqs')
     sqs.send_message(
         QueueUrl=sqsURL,
@@ -312,7 +109,7 @@ def recv(event):
     return json_obj,record['body']
 
 # Create context and event to run lambda_handlers
-def main(genome,sequence,jobid):
+def local_lambda_invocation(genome,sequence,jobid):
     dictionary ={ 
         "Genome": genome, 
         "Sequence": sequence, 
@@ -406,7 +203,7 @@ def spawn_notification_if_complete(dynamoDbClient, tableName,job,notification_qu
     # check if all tasks are completed
     if (job["TotalTasks"]/job["CompletedTasks"]) >= 0.54:
         print("All tasks complete, spawning a notification lambda")
-        sendSQS(notification_queue_url,job["JobID"])
+        send_sqs(notification_queue_url,job["JobID"])
 
         # mark job as finished
         set_task_finished(dynamoDbClient, tableName, job["JobID"])

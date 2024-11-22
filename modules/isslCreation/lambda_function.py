@@ -169,7 +169,7 @@ def lambda_handler(event, context):
     # Create issl files
     isslcreate(accession, tmp_dir)
 
-    sendSQS(TARGET_SCAN_QUEUE, json_object) 
+    send_sqs(TARGET_SCAN_QUEUE, json_object) 
 
     print("These are the extracted file names", tmp_dir_fasta)
     
@@ -181,5 +181,5 @@ def lambda_handler(event, context):
     print("All Done... Terminating Program.")
 
 if __name__== "__main__":
-    event, context = main()
+    event, context = local_lambda_invocation()
     lambda_handler(event, context)

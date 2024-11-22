@@ -215,19 +215,19 @@ def lambda_handler(event, context):
         print("The fasta files have yet to be created")
         for file in file_names:
             MessageBody=json.dumps(file)
-            sendSQS(FILE_PARTS_QUEUE, MessageBody)
+            send_sqs(FILE_PARTS_QUEUE, MessageBody)
         print(file_names)
     else:
         if  mulit_part_issl:
             print ("Issl file has already been generated. Moving to scoring process")
-            sendSQS(TARGET_SCAN_QUEUE, json_object) 
+            send_sqs(TARGET_SCAN_QUEUE, json_object) 
             print("All Done... Terminating Program.")
         else:
             print("The fasta files exist but the issl ones do not")
-            sendSQS(ISSL_QUEUE, json_object)
+            send_sqs(ISSL_QUEUE, json_object)
 
     print("All Done... Terminating Program.")
 
 if __name__== "__main__":
-    event, context = main()
+    event, context = local_lambda_invocation()
     lambda_handler(event, context)
