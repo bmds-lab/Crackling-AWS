@@ -9,7 +9,6 @@ TARGETS_TABLE = os.getenv('TARGETS_TABLE')
 JOBS_TABLE = os.getenv('JOBS_TABLE')
 TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
-NOTIFICATION_SQS = os.getenv('NOTIFICATION_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 
 dynamodb = boto3.resource('dynamodb')
@@ -21,13 +20,6 @@ complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHD
 def rc(dna):
     rcseq = dna.translate(complements)[::-1]
     return rcseq
-    
-#Loads a FASTA file and creates a string <candidate_seq> from the sequence.
-trans = str.maketrans('', '', '1234567890 \n')
-def clean_candidate_sequence(rawsequence):
-    sequence = str(rawsequence)
-    return sequence.translate(trans).upper()
-
 
 def create_target_entry(params, index, target):
     return {
@@ -99,15 +91,7 @@ def find_targets(params):
                 )
 
                 taskCounter += 1 #increment task counter
-                
 
-                #print(
-                #    index, 
-                #    target,
-                #    targetQueue, 
-                #    response['ResponseMetadata']['HTTPStatusCode'], 
-                #    msg
-                #)
     return taskCounter
 
 
@@ -120,7 +104,6 @@ def deleteCandidateTargets(jobid):
     
     with table.batch_writer() as batch:
         for i in range(0, target_count):
-            #print(f"Deleting: ", {'JobID': jobid, 'TargetID': index})
             batch.delete_item(Key={'JobID': jobid, 'TargetID': index})
             index += 1
 
@@ -141,5 +124,4 @@ def lambda_handler(event, context):
     # set the total number of tasks the job needs to complete
     job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
 
-    
-    return None #'Completed {} tasks.'.format(len(inserted) + len(removed))
+    return None

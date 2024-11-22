@@ -340,10 +340,8 @@ def lambda_handler(event, context):
     recordsByJobID = {}
     
     ReceiptHandles = []
-    print(event)
     for record in event['Records']:
         genome = ""
-        #print(record)
         try:
             message = json.loads(record['body'])
             genome = json.loads(message['genome'])
@@ -365,9 +363,7 @@ def lambda_handler(event, context):
         }
             
         ReceiptHandles.append(record['receiptHandle'])
-       
-    #print(f"Processing {len(records)} guides.")
-    
+
     print(recordsByJobID)
     results = CalcConsensus(recordsByJobID)
     print(results)
