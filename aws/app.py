@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Crackling-cloud AWS
 
@@ -34,11 +33,6 @@ from aws_cdk import (
 
 from constructs import Construct
 
-
-
-version = "-Dev"
-# availabilityZone = "ap-southeast-2a"
-
 account_number = Aws.ACCOUNT_ID
 availabilityZone = Aws.REGION
 
@@ -51,9 +45,7 @@ class CracklingStack(Stack):
         # VPCs are used for constraining infrastructure to a private network.
         cracklingVpc = ec2_.Vpc(
             scope=self,
-            id=f"CracklingVpc{version}",
-            vpc_name=f"CracklingVpc{version}",
-            #add s3 gateway
+            id="CracklingVpc",
             gateway_endpoints={
                 "s3" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.S3
@@ -64,8 +56,6 @@ class CracklingStack(Stack):
             },
           
             nat_gateways=1,
-            #availability_zones=[availabilityZone],
-            
         )
 
         ### Simple Storage Service (S3) is a key-object store that can host websites.
@@ -335,7 +325,6 @@ class CracklingStack(Stack):
         lambdaCreateJob = lambda_.Function(self, "createJob", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/createJob"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -356,7 +345,6 @@ class CracklingStack(Stack):
         lambdaCustomDataUpload = lambda_.Function(self, "CustomDataUpload", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/customData"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -377,7 +365,6 @@ class CracklingStack(Stack):
         lambdaDownloader = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/downloader"),
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
@@ -416,7 +403,6 @@ class CracklingStack(Stack):
         lambdaPartloader = lambda_.Function(self, "partloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/partloader"),
             layers=[lambdaLayerCommonFuncs, lambdaLayerRequests],
             vpc=cracklingVpc,
@@ -446,7 +432,6 @@ class CracklingStack(Stack):
         lambdaIsslCreation = lambda_.Function(self, "isslCreationLambda", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/isslCreation"),
             layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
             vpc=cracklingVpc,
@@ -479,7 +464,6 @@ class CracklingStack(Stack):
         lambdaTargetScan = lambda_.Function(self, "targetScan", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/targetScan"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -516,7 +500,6 @@ class CracklingStack(Stack):
         lambdaConsensus = lambda_.Function(self, "consensus", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            # insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/consensus"),
             layers=[lambdaLayerLib, lambdaLayerSgrnascorerModel, lambdaLayerRnafold, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -556,7 +539,6 @@ class CracklingStack(Stack):
         lambdaIssl = lambda_.Function(self, "issl", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/issl"),
             layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -596,7 +578,6 @@ class CracklingStack(Stack):
         lambdaNotifier = lambda_.Function(self, "Notifier", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/notifier"),
             layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
@@ -616,6 +597,7 @@ class CracklingStack(Stack):
             event_source_arn=sqsNotification.queue_arn,
             batch_size=1
         )
+        
         #create role for SES access
         ses_policy_statement = iam_.PolicyStatement(
             effect=iam_.Effect.ALLOW,
@@ -877,7 +859,6 @@ class CracklingStack(Stack):
             self, "ReplaceApiUrlLambda",
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            insights_version = lambda_.LambdaInsightsVersion.VERSION_1_0_98_0,
             code=lambda_.Code.from_asset("../modules/updateApiUrl"),
             vpc=cracklingVpc,
             environment={
@@ -936,11 +917,10 @@ class CracklingStack(Stack):
 
 
 app = cdk.App()
-# CracklingStack(app, f"CracklingStack{version}")
 
-CracklingStack(app, f"CracklingStack{version}", synthesizer=DefaultStackSynthesizer(
-        file_assets_bucket_name="a-public-facing-bucket-n10753753"
-    ) )
+CracklingStack(app, f"CracklingStack", synthesizer=DefaultStackSynthesizer(
+    #file_assets_bucket_name="a-public-facing-bucket-n10753753"
+))
 
 # CracklingStack(
 #     app, 
