@@ -13,7 +13,6 @@ targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 jobs_table_name = os.getenv('JOBS_TABLE', 'JobsTable')
 task_tracking_table_name = os.getenv('TASK_TRACKING_TABLE')
 issl_queue_url = os.getenv('ISSL_QUEUE', 'IsslQueue')
-notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
 #boto3 aws clients
 dynamodb = boto3.resource('dynamodb')
@@ -311,10 +310,7 @@ def lambda_handler(event, context):
             ]
         )
 
-    # Update task counter for each job, and spawn a notification if a job is completed    
+    # Update task counter for each job
     job = update_task_counter(dynamodb, task_tracking_table_name, jobId, 1)
-
-    #notify user if job is completed
-    spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
 
     return (event)

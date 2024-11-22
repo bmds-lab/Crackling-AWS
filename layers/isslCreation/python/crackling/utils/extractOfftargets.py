@@ -17,8 +17,13 @@ To use:     python3.7 ExtractOfftargets.py output-file  (input-files... | input-
 # /usr/bin/python3 /config/genomes/extractOfftargets.py genomes/test /config/genomes/test/fasta/chr.fa,/config/genomes/test/fasta/chrpMETAL01.fa
 
 import glob, os, re, shutil, sys, tempfile, heapq, argparse
-from crackling.Helpers import *
-from crackling.Paginator import Paginator
+
+# Function that formats provided text with time stamp
+def printer(stringFormat):
+    print('>>> {}:\t{}\n'.format(
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S:%f"),
+        stringFormat
+    ))
 
 # Defining the patterns used to detect sequences
 pattern_forward_offsite = r"(?=([ACG][ACGT]{19}[ACGT][AG]G))"
