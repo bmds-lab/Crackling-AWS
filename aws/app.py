@@ -175,18 +175,11 @@ class CracklingStack(Stack):
         )
 
         ### Genomes are downloaded from NCBI in portions. This table stores metadata about those portions.
-        ddb_Uploadedfiles = ddb_.Table(
-            self, "ddbUploadedfiles",
+        ddbGenomeParts = ddb_.Table(self, "ddbGenomeParts",
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
-            partition_key=ddb_.Attribute(
-                name="GenomeFileName",  # Partition key
-                type=ddb_.AttributeType.STRING
-            ),
-            sort_key=ddb_.Attribute(
-                name="FileNamePartNumber",  # Sort key
-                type=ddb_.AttributeType.NUMBER 
-            ),
+            partition_key=ddb_.Attribute(name="GenomePartFileName", type=ddb_.AttributeType.STRING),
+            sort_key=ddb_.Attribute(name="FileNamePartNumber", type=ddb_.AttributeType.NUMBER ),
             stream=ddb_.StreamViewType.NEW_IMAGE
         )
 
@@ -268,19 +261,19 @@ class CracklingStack(Stack):
 
         ### An SQS Deal Letter queue handles messages that have "died" in another queue.
         # This is a dead letter queue for the queue that implements the genome portion/part downloader
-        sqsGenomePortionDownloads = sqs_.Queue(
+        sqsGenomePartDownloads = sqs_.Queue(
             self, "DLQ",
             retention_period=Duration.days(14)
         )
 
         ### This SQS queue handles downloading genome portions (i.e., files parts)
-        sqsFileParts = sqs_.Queue(self, "sqsFileParts", 
+        sqsGenomeParts = sqs_.Queue(self, "sqsGenomeParts", 
             receive_message_wait_time=Duration.seconds(20),
             visibility_timeout=duration,
             retention_period=Duration.minutes(30),
             dead_letter_queue=sqs_.DeadLetterQueue(
                 max_receive_count=3,  # Set maxReceiveCount to 3
-                queue=sqsGenomePortionDownloads
+                queue=sqsGenomePartDownloads
             )
         )
 
@@ -348,10 +341,10 @@ class CracklingStack(Stack):
         s3Genome.grant_read_write(lambdaCustomDataUpload)   
         lambdaCustomDataUpload.add_to_role_policy(lambdaS3AccessPointIAM)
 
-        ### Lambda function that organises the parallel download
+        ### Lambda function that organises the parallel download of genome parts
         # Extracts names and sizes from fasta files in NCBI server
         # Split each file into part file portions
-        lambdaDownloader = lambda_.Function(self, "downloader", 
+        lambdaGenomeDownloadScheduler = lambda_.Function(self, "downloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/downloader"),
@@ -364,30 +357,30 @@ class CracklingStack(Stack):
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
-                'FILE_PARTS_QUEUE' : sqsFileParts.queue_url,
+                'FILE_PARTS_QUEUE' : sqsGenomeParts.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
             }
         )
 
 
-        ddbJobs.grant_stream_read(lambdaDownloader)
-        sqsIsslCreation.grant_send_messages(lambdaDownloader)
-        sqsTargetScan.grant_send_messages(lambdaDownloader)
-        sqsFileParts.grant_send_messages(lambdaDownloader)
+        ddbJobs.grant_stream_read(lambdaGenomeDownloadScheduler)
+        sqsIsslCreation.grant_send_messages(lambdaGenomeDownloadScheduler)
+        sqsTargetScan.grant_send_messages(lambdaGenomeDownloadScheduler)
+        sqsGenomeParts.grant_send_messages(lambdaGenomeDownloadScheduler)
 
-        lambdaDownloader.add_event_source_mapping(
+        lambdaGenomeDownloadScheduler.add_event_source_mapping(
             "mapLdaDownloaderDdbJobs",
             event_source_arn=ddbJobs.table_stream_arn,
             retry_attempts=0,
             starting_position=lambda_.StartingPosition.LATEST
         )
-        s3Genome.grant_read_write(lambdaDownloader)   
-        lambdaDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
+        s3Genome.grant_read_write(lambdaGenomeDownloadScheduler)   
+        lambdaGenomeDownloadScheduler.add_to_role_policy(lambdaS3AccessPointIAM)
 
        
-       ### Lambda function that downloads files from NCBI server and uploads them to S3 
-        lambdaPartloader = lambda_.Function(self, "partloader", 
+        ### Lambda function that downloads files from NCBI server and uploads them to S3 
+        lambdaGenomePartsDownloader = lambda_.Function(self, "partloader", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/partloader"),
@@ -397,22 +390,23 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10), 
             environment={
-                'FILES_TABLE' : ddb_Uploadedfiles.table_name,
+                'FILES_TABLE' : ddbGenomeParts.table_name,
                 'BUCKET' : s3GenomeAccess.attr_arn,
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url
             }
         )
 
-        sqsFileParts.grant_consume_messages(lambdaPartloader)
-        sqsIsslCreation.grant_send_messages(lambdaPartloader)
-        lambdaPartloader.add_event_source_mapping(
+        sqsGenomeParts.grant_consume_messages(lambdaGenomePartsDownloader)
+        sqsIsslCreation.grant_send_messages(lambdaGenomePartsDownloader)
+        ddbGenomeParts.grant_read_write_data(lambdaGenomePartsDownloader)
+        s3Genome.grant_read_write(lambdaGenomePartsDownloader)
+        lambdaGenomePartsDownloader.add_to_role_policy(lambdaS3AccessPointIAM)
+
+        lambdaGenomePartsDownloader.add_event_source_mapping(
             "mapppIsslCreation",
-            event_source_arn=sqsFileParts.queue_arn,
+            event_source_arn=sqsGenomeParts.queue_arn,
             batch_size=1
         )
-        ddb_Uploadedfiles.grant_read_write_data(lambdaPartloader) # read write access to dynamoDB table
-        s3Genome.grant_read_write(lambdaPartloader)  # read write access to genome bucket 
-        lambdaPartloader.add_to_role_policy(lambdaS3AccessPointIAM) # idk what this is
 
 
         # -> -> issl_creation
@@ -681,111 +675,111 @@ class CracklingStack(Stack):
         )
 
 
-            # Path: /jobs/{job-id}/tasks
+        # Path: /jobs/{job-id}/tasks
         apiResourceResultsIdTasks = apiRest.root.add_resource("jobs") \
         .add_resource("{jobid}") \
         .add_resource("tasks")  # returns an `IResource`
 
 
         apiResourceResultsIdTasks.add_method(  
-        "GET",
-        api_.AwsIntegration(
-            service="dynamodb",
-            action="Query",
-            options=api_.IntegrationOptions(
-                credentials_role=iam_.Role(
-                    self, "roleApiGetTasksDdb",
-                    assumed_by=iam_.ServicePrincipal("apigateway.amazonaws.com"),
-                    inline_policies={
-                        'readDynamoDB': iam_.PolicyDocument(
-                            statements=[
-                                iam_.PolicyStatement(
-                                    actions=[
-                                        "dynamodb:GetItem",
-                                        "dynamodb:GetRecords",
-                                        "dynamodb:Query"
-                                    ],
-                                    resources=[
-                                        ddbTaskTracking.table_arn  # Query the tasks table
-                                    ],
-                                    effect=iam_.Effect.ALLOW
-                                )
-                            ]
-                        )
-                    }
-                ),
-                passthrough_behavior=api_.PassthroughBehavior.WHEN_NO_TEMPLATES,
-                request_templates={
-                    'application/json': (
-                        '{'
-                        f'   "TableName": "{ddbTaskTracking.table_name}",'  # Query for the tasks table
-                        '    "KeyConditionExpression": "JobID = :v1",'
-                        '    "ExpressionAttributeValues": {'
-                        '        ":v1": {"S": "$input.params(\'jobid\')"}'
-                        '    }'
-                        '}'
-                    )
-                },
-                integration_responses=[
-                    api_.IntegrationResponse(
-                        status_code='200',
-                        response_templates={
-                            'application/json': (
-                                "#set($allTasks = $input.path('$.Items'))"
-                                '{'
-                                '"recordsTotal": $allTasks.size(),'
-                                '"data": ['
-                                '   #foreach($task in $allTasks) {'
-                                '       "JobID": "$task.JobID.S",'
-                                '       "TotalTasks": "$task.TotalTasks.S",'
-                                '       "CompletedTasks": "$task.CompletedTasks.N",'
-                                '       "Version": "$task.Version.N"'
-                                '   }#if($foreach.hasNext),#end'
-                                '   #end'
-                                ']'
-                                '}'
+            "GET",
+            api_.AwsIntegration(
+                service="dynamodb",
+                action="Query",
+                options=api_.IntegrationOptions(
+                    credentials_role=iam_.Role(
+                        self, "roleApiGetTasksDdb",
+                        assumed_by=iam_.ServicePrincipal("apigateway.amazonaws.com"),
+                        inline_policies={
+                            'readDynamoDB': iam_.PolicyDocument(
+                                statements=[
+                                    iam_.PolicyStatement(
+                                        actions=[
+                                            "dynamodb:GetItem",
+                                            "dynamodb:GetRecords",
+                                            "dynamodb:Query"
+                                        ],
+                                        resources=[
+                                            ddbTaskTracking.table_arn  # Query the tasks table
+                                        ],
+                                        effect=iam_.Effect.ALLOW
+                                    )
+                                ]
                             )
-                        },
-                        response_parameters={
-                            'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
-                            'method.response.header.Access-Control-Allow-Methods': "'POST,OPTIONS'",
-                            'method.response.header.Access-Control-Allow-Origin': "'*'"
-                        },
-                    )
-                ]
-            )
-        ),
-        request_parameters={
-            'method.request.path.proxy': True
-        },
-        method_responses=[
-            api_.MethodResponse(
-                response_models={
-                    'application/json': api_.Model.EMPTY_MODEL
-                },
-                response_parameters={
-                    'method.response.header.Access-Control-Allow-Headers': True,
-                    'method.response.header.Access-Control-Allow-Methods': True,
-                    'method.response.header.Access-Control-Allow-Origin': True
-                },
-                status_code='200'
-            )
-        ]
-    )
+                        }
+                    ),
+                    passthrough_behavior=api_.PassthroughBehavior.WHEN_NO_TEMPLATES,
+                    request_templates={
+                        'application/json': (
+                            '{'
+                            f'   "TableName": "{ddbTaskTracking.table_name}",'  # Query for the tasks table
+                            '    "KeyConditionExpression": "JobID = :v1",'
+                            '    "ExpressionAttributeValues": {'
+                            '        ":v1": {"S": "$input.params(\'jobid\')"}'
+                            '    }'
+                            '}'
+                        )
+                    },
+                    integration_responses=[
+                        api_.IntegrationResponse(
+                            status_code='200',
+                            response_templates={
+                                'application/json': (
+                                    "#set($allTasks = $input.path('$.Items'))"
+                                    '{'
+                                    '"recordsTotal": $allTasks.size(),'
+                                    '"data": ['
+                                    '   #foreach($task in $allTasks) {'
+                                    '       "JobID": "$task.JobID.S",'
+                                    '       "TotalTasks": "$task.TotalTasks.S",'
+                                    '       "CompletedTasks": "$task.CompletedTasks.N",'
+                                    '       "Version": "$task.Version.N"'
+                                    '   }#if($foreach.hasNext),#end'
+                                    '   #end'
+                                    ']'
+                                    '}'
+                                )
+                            },
+                            response_parameters={
+                                'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
+                                'method.response.header.Access-Control-Allow-Methods': "'POST,OPTIONS'",
+                                'method.response.header.Access-Control-Allow-Origin': "'*'"
+                            },
+                        )
+                    ]
+                )
+            ),
+            request_parameters={
+                'method.request.path.proxy': True
+            },
+            method_responses=[
+                api_.MethodResponse(
+                    response_models={
+                        'application/json': api_.Model.EMPTY_MODEL
+                    },
+                    response_parameters={
+                        'method.response.header.Access-Control-Allow-Headers': True,
+                        'method.response.header.Access-Control-Allow-Methods': True,
+                        'method.response.header.Access-Control-Allow-Origin': True
+                    },
+                    status_code='200'
+                )
+            ]
+        )
 
 
 
         # /submit
-        apiResourceSubmitJob = apiRest.root.add_resource("submit") # returns an `IResource`
-        apiResourceSubmitJob.add_method( # Adds a `Method` object
+        apiResourceSubmitJob = apiRest.root.add_resource("submit")
+        apiResourceSubmitJob.add_method(
             "POST",
             api_.LambdaIntegration(lambdaCreateJob)
         )
 
 
         # /customUpload
-        apiResourceUploadData = apiRest.root.add_resource("customUpload") # returns an `IResource`
-        apiResourceUploadData.add_method( # Adds a `Method` object
+        apiResourceUploadData = apiRest.root.add_resource("customUpload")
+        apiResourceUploadData.add_method(
             "GET",
             api_.LambdaIntegration(lambdaCustomDataUpload)
         )
@@ -794,6 +788,8 @@ class CracklingStack(Stack):
         apiRest_url = apiRest.url  # Make sure this variable is defined before use
 
 
+        ### The frontend contains a placeholder for the API URL
+        # This Lambda function is invoked when the Stack is created or updated
         replace_api_url_lambda = lambda_.Function(
             self, "ReplaceApiUrlLambda",
             runtime=lambda_.Runtime.PYTHON_3_10,
@@ -807,7 +803,6 @@ class CracklingStack(Stack):
                 "CLOUDFRONT_DISTRIBUTION_ID": CracklingDistribution.distribution_id
             }, 
         )
-
 
         s3Frontend.grant_read_write(replace_api_url_lambda)
 
@@ -829,14 +824,14 @@ class CracklingStack(Stack):
             },
 
             on_update={
-            "service": "Lambda",
-            "action": "invoke",
-            "parameters": {
-            "FunctionName": replace_api_url_lambda.function_arn,
-             }, 
-             "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
-
+                "service": "Lambda",
+                "action": "invoke",
+                "parameters": {
+                    "FunctionName": replace_api_url_lambda.function_arn,
+                }, 
+                "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
             },
+
             policy=cr.AwsCustomResourcePolicy.from_statements([
                 iam_.PolicyStatement(
                     actions=["lambda:InvokeFunction"],

@@ -87,7 +87,7 @@ def part_upload_to_s3(response, upload_id, part_number, object_key):
 def all_parts_uploaded(filename, total_parts):
     # Query the table to count the number of parts uploaded
     response = FILES_TABLE.query(
-        KeyConditionExpression=Key('GenomeFileName').eq(filename)
+        KeyConditionExpression=Key('GenomePartFileName').eq(filename)
     )
     uploaded_parts = response['Count']
     print("Uploaded part: ", uploaded_parts)
@@ -104,7 +104,7 @@ def extract_etags_and_parts(filename):
     try:
         # Query DynamoDB to get all parts for the given filename
         response = FILES_TABLE.query(
-            KeyConditionExpression=Key('GenomeFileName').eq(filename)
+            KeyConditionExpression=Key('GenomePartFileName').eq(filename)
         ) 
         items = response['Items']
         parts = [{'ETag': item['etag'], 'PartNumber': int(item['FileNamePartNumber'])} for item in items]
@@ -141,7 +141,7 @@ def complete_file_multipart_upload(object_key, upload_id, parts):
 def file_upload_record(filename, part, etag):
     response_dynamo = FILES_TABLE.put_item(
                     Item={
-                        'GenomeFileName': filename,
+                        'GenomePartFileName': filename,
                         'FileNamePartNumber': part,
                         'etag': etag, 
                     }

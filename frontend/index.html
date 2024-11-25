@@ -1,17 +1,6 @@
 <html>
-
 	<head>
 		<title>Crackling</title>
-		
-		<!-- Global site tag (gtag.js) - Google Analytics -->
-		<script async src="https://www.googletagmanager.com/gtag/js?id=G-MMQYQKBXNX"></script>
-		<script>
-		    window.dataLayer = window.dataLayer || [];
-		    function gtag(){dataLayer.push(arguments);}
-		    gtag('js', new Date());
-		    
-		    gtag('config', 'G-MMQYQKBXNX');
-		</script>
 		
 		<!--Import JQuery v3.5.1 -->
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
@@ -49,24 +38,26 @@
 			}
 
 			#statusMessage {
-            background-color: #f0f0f0;
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 20px;
-            color: #333;
-            display: none; 
-            border-radius: 8px; 
-        }
+				background-color: #f0f0f0;
+				border: 1px solid #ccc;
+				padding: 10px;
+				margin-bottom: 20px;
+				color: #333;
+				display: none; 
+				border-radius: 8px; 
+			}
 
-        .status-label {
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-        .status-results {
-            margin-top: 5px; 
-        }
-
-
+			.status-label {
+				font-weight: bold;
+				font-size: 1.1em;
+			}
+			.status-results {
+				margin-top: 5px; 
+			}
+			.divNav { margin-bottom: 2em; }
+			.cracklingLogo { margin-left: 1em; }
+			.dnaSeq { font-family: Courier New; }
+			.hidden { display: none; }
 		</style>
             
 		
@@ -79,8 +70,7 @@
 				$('.tooltipped').tooltip();
 				$('.collapsible').collapsible();
 				$('select').formSelect();
-				
-				
+
 				// Submit a job
 				$('#btnSubmitJob').on('click', function() {
 					API = $('#txtApiPath').val();
@@ -93,19 +83,9 @@
 
 					var regex2 = new RegExp("^G[A-Z]{2}_[0-9]{9}.[0-9]+");
 					if (!regex2.test($('#genome').val())) {
-						M.toast({html: 'Your genome accession should be in GXX_XXXXXXXXX.X form. The virus accession form is not currently supported.'});
+						M.toast({html: 'Your genome accession should be in GXX_XXXXXXXXX.X form.'});
 						return 0;
 					}
-					
-					//if ($('#genome').val() != "") {
-					//	M.toast({html: 'You must select a genome for off-target scoring.'});
-					//	return 0;
-					//}
-					console.log(JSON.stringify({
-							'sequence' 	: $('#sequence').val(),
-							'genome'	: $('#genome').val()
-						}))
-
 
                     // change the value of the genome based on 
                     var useDropdown = $('#toggleDropdown').is(':checked');
@@ -117,11 +97,6 @@
                         genome = $('#genome').val(); // Use the value from the input box
                     }
 
-                    console.log("This is the actual genome:")
-                    console.log(genome)
-
-
-				
 					$.ajax({
 						url: API + '/submit', 
 						data: JSON.stringify({
@@ -131,7 +106,6 @@
 						type: "POST", 
 						contentType: "application/json",
 						success: function(data) {
-							console.log(data);
 							$('#txtJobId').val(data.JobID);
 							$('.tabs').tabs('select', 'tabResults');
 							$('#tblResults').find("tr:gt(0)").remove();
@@ -153,6 +127,7 @@
 						M.toast({html: 'You have not entered a job ID.'});
 						return 0;
 					}
+
 					$.ajax({
 						url: API + '/results/' + jobid + '/targets',
 						type: "GET", 
@@ -165,20 +140,23 @@
 							$('#tblResults').find("tr:gt(0)").remove();
 
 							$.each(payload.data, function(i, item) {
-								// todo: tidy this up!!
-								c = item.Consensus.split(',').map(Number);
-								cStr = "Accepted by:";
-								if (c[0]) { cStr += " CHOPCHOP"; }
-								if (c[1]) { cStr += " mm10db"; }
-								if (c[1]) { cStr += " sgRNAScorer 2.0"; }
-								cCount = c[0] + c[1] + c[2];
-								
-								if (cCount >= 2) {
-									consensus = '<span style="color: green" title="'+cStr+'">'+cCount+' / 3</span>';
+								if (item.Consensus == '') {
+									consensus = '';
 								} else {
-									consensus = '<span style="color: red" title="'+cStr+'">'+cCount+' / 3</span>';
+									c = item.Consensus.split(',').map(Number);
+									cStr = "Accepted by:";
+									if (c[0]) { cStr += " CHOPCHOP"; }
+									if (c[1]) { cStr += " mm10db"; }
+									if (c[1]) { cStr += " sgRNAScorer 2.0"; }
+									cCount = c[0] + c[1] + c[2];
+									
+									if (cCount >= 2) {
+										consensus = '<span style="color: green" title="'+cStr+'" class="tooltipped" data-tooltip="This guide is efficient ('+cStr+')">'+cCount+' / 3</span>';
+									} else {
+										consensus = '<span style="color: red" title="'+cStr+'" class="tooltipped" data-tooltip="This guide is not efficient ('+cStr+')">'+cCount+' / 3</span>';
+									}
 								}
-								
+
 								var $tr = $('<tr>').append(
 									$('<td>').text(item.Start),
 									$('<td>').text(item.End),
@@ -189,67 +167,11 @@
 								).appendTo('#tblResults');
 							});
 
-
-							
-
-							// // Newwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
-
-							// var jobStatusHtml = `
-							// 	<p><strong>Job Status</strong></p>
-							// 	<p>JobID: ${payload.jobStatus.JobID}</p>
-							// 	<p>Total Tasks: ${payload.jobStatus.TotalTasks}</p>
-							// 	<p>Completed Tasks: ${payload.jobStatus.CompletedTasks}</p>
-							// 	<p>Version: ${payload.jobStatus.Version}</p>
-							// `;
-							// $('#jobStatus').html(jobStatusHtml);
-
-
-
-							// $.each(payload.data, function(i, item) {
-							// 	// todo: tidy this up!!
-							// 	c = item.Consensus.split(',').map(Number);
-							// 	cStr = "Accepted by:";
-							// 	if (c[0]) { cStr += " CHOPCHOP"; }
-							// 	if (c[1]) { cStr += " mm10db"; }
-							// 	if (c[1]) { cStr += " sgRNAScorer 2.0"; }
-							// 	cCount = c[0] + c[1] + c[2];
-								
-							// 	if (cCount >= 2) {
-							// 		consensus = '<span style="color: green" title="'+cStr+'">'+cCount+' / 3</span>';
-							// 	} else {
-							// 		consensus = '<span style="color: red" title="'+cStr+'">'+cCount+' / 3</span>';
-							// 	}
-								
-							// 	var $tr = $('<tr>').append(
-							// 		$('<td>').text(item.Start),
-							// 		$('<td>').text(item.End),
-							// 		$('<td>').text(item.Strand),
-							// 		$('<td class="dnaSeq">').text(item.Sequence),
-							// 		$('<td>').html(consensus),
-							// 		$('<td>').text(item.IsslScore)
-							// 	).appendTo('#tblResults');
-							// });
 						}, 
 						error: function (request, status, error) {
 							console.log(error);
 						}
 					});
-
-
-					// $.ajax({
-					// 	url: API + '/jobs',  
-					// 	type: "GET",
-					// 	data: { jobid: jobid },  
-					// 	contentType: "application/json",
-					// 	success: function(payload) {
-					// 		// Log the response payload to the console
-					// 		console.log("Response Payload:", payload);
-					// 	},
-					// 	error: function (request, status, error) {
-					// 		console.log("Error:", error);
-					// 	}
-					// });
-
 
 					// Fetch Tasks Data
 					$.ajax({
@@ -258,34 +180,14 @@
 						contentType: "application/json",
 						success: function(tasksPayload) {
 							if (tasksPayload.recordsTotal == 0) {
-								M.toast({html: 'No task tracking results for this job ID.'});
+								M.toast({html: 'No tracking data'});
 							} else {
-								
-								
-								// $('#jobId').text(tasksPayload.JobID);  
-								// $('#totalTasks').text(tasksPayload.TotalTasks);  
-								// $('#completedTasks').text(tasksPayload.CompletedTasks);  
-								// $('#version').text(tasksPayload.Version); 
-								// $('#statusMessage').show();
-
-									// Append task tracking rows to the table
-									// var $tr = $('<tr>').append(
-									// 	$('<td>').text(task.JobID),
-									// 	$('<td>').text(task.TotalTasks),
-									// 	$('<td>').text(task.CompletedTasks),
-									// 	$('<td>').text(task.Version)
-									// ).appendTo('#tblTasks'); 
-
-
-
 								$.each(tasksPayload.data, function(i, task) {
-
 									$('#jobId').text(task.JobID);  
 									$('#totalTasks').text(task.TotalTasks);  
 									$('#completedTasks').text(task.CompletedTasks);  
 									$('#version').text(task.Version); 
-									$('#statusMessage').show()
-
+									$('#statusMessage').show();
 								});
 							}
 						},
@@ -299,7 +201,7 @@
 
 
 				$('#uploadButton').on('click', function(event) {
-				event.preventDefault(); // Prevent the default form submission
+				event.preventDefault();
 
 				var fileInput = $('#datasetFile')[0];
 				var file = fileInput.files[0];
@@ -361,24 +263,10 @@
 						}
 					});
              	});
-
-
 			});
 		</script>
-		
-		<style>
-		.divNav { margin-bottom: 2em; }
-		.divContent {  }
-		.cracklingLogo { margin-left: 1em; }
-		.dnaSeq { font-family: Courier New; }
-		.hidden {
-            display: none;
-        }
-		</style>
 	</head>
 
-
-	
 	<body>
 		<div class="nav-wrapper">
 			<nav class="nav-extended">
@@ -409,11 +297,9 @@
 				</div>
 			</nav>
 		</div>
-			
-		<!-- Start Material container -->
+
 		<div class="container">
 			<div class="section">
-				<!-- Start page content -->
 				<div class="divContent">
 					
 					<!-- Tab: Submit -->
@@ -469,7 +355,6 @@
 								<label for="sequence">Query sequence</label>
 							</div>
 
-
 							<p>
 								<label>
 									<input type="checkbox" id="toggleDropdown" onclick="toggleInputs()">
@@ -477,15 +362,11 @@
 								</label>
 							</p>
 
-
-
-
                             <div class="input-field col s12" id="genomeContainer">
 								<textarea id="genome" name="genome" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste Your NCBI genome accession here">GCA_000482205.1</textarea>
 								<label for="genome">Genome Accession</label>
 							</div>
 
-                            
 							<div class="input-field col s12 hidden" id="dropdownContainer">
 								<form id="dropdownForm" action="#" method="post">
 									<label for="dropdown">Select an Option:</label><br>
@@ -493,7 +374,6 @@
 									</select>
 								</form>
 							</div>
-					
 
 						</br>
 							<div>
@@ -506,8 +386,7 @@
 							</button>
 						</form>
 					</div>
-					
-					
+
 					<!-- Tab: Results -->
 					<div id="tabResults" class="col s10">
 						<form name="frmRetrieveJob" id="frmRetrieveJob">
@@ -526,32 +405,13 @@
 							
 							</br>
 
-							<!-- <table id="tblTasks" class="striped highlight">
-								<thead>
-									<tr>
-										<th>Job ID</th>
-										<th>Total Tasks</th>
-										<th>Completed Tasks</th>
-										<th>Version</th>
-									</tr>
-								</thead>
-
-								<tbody>
-								</tbody>
-							</table>
-							 -->
-
-					
 							<div id="statusMessage">
-								<div class="status-label">Status:</div>
-								<div class="status-results">
-								Job ID: <span id="jobId"></span>, Total Tasks: <span id="totalTasks"></span>, Completed Tasks: <span id="completedTasks"></span>, Version: <span id="version"></span>
+								<div class="status-label">Processing status:</div>
+								<div class="status-results tooltipped" data-tooltip="Each gRNA has two associated tasks (i.e, on-target and off-target scores)">
+									<span id="completedTasks"></span> of <span id="totalTasks"></span> completed.
 								</div>
 							</div>
-					
 
-
-							
 							<table name="tblResults" id="tblResults" border="1" class="highlight centered">
 								<thead>
 									<tr>
@@ -567,16 +427,13 @@
 						</form>
 					</div>
 					
-					
 					<!-- Tab: Settings -->
 					<div id="tabSettings" class="col s10">
 						<div class="input-field col s6">
-							<!-- <input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="https://22lkohk38b.execute-api.ap-southeast-2.amazonaws.com/CracklingProductionApi" data-position="bottom"> -->
 							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="{{API_URL}}" data-position="bottom">
 							<label for="txtApiPath">Crackling API URL</label>
 						</div>
 					</div>
-					
 					
 					<!-- Tab: About -->
 					<div id="tabAbout" class="col s10">
@@ -598,7 +455,6 @@
 										<i>See References #1</i>
 									</blockquote>
 									
-									
 									<h4>Multi-approach efficiency evaluation</h4>
 									<blockquote>
 										A large number of computational methods have been developed to assist in the identification of suitable guides. However, there is only limited overlap between the guides that each tool identifies. This can motivate further development, but also raises the question of whether it is possible to combine existing tools to improve guide design.
@@ -612,10 +468,6 @@
 										</br>
 										<i>See References #2</i>
 									</blockquote>
-									
-									<h4>FAQ's</h4>
-									<p><b>Why can I not see all consensus and ISSL results?</b></p>
-									<p>This is a known issue that we're trying to fix as quickly as possible.</p>
 								</div>
 							</li>
 							<li>
@@ -696,9 +548,7 @@
 
 
 					<!-- Tab - Upload Custom Dataset-->
-
 					<div id="tabUpload" class="col s10">
-
 						<form id="uploadForm" enctype="multipart/form-data">
 							<div class="file-field input-field">
 								<div class="btn">
@@ -716,75 +566,59 @@
 							<div class="loading-circle"></div>
 						</div>
 					</div>
-					
-				<!-- End page content -->
 				</div>
-
-			<!-- End section -->
 			</div>
-			
-		<!-- End Material container -->
 		</div>
 	</body>
 
 	<script>
 		
 		function toggleInputs() {
-					console.log("hello this is being run")
-					const isChecked = document.getElementById('toggleDropdown').checked;
-					const genomeContainer = document.getElementById('genomeContainer');
-					const dropdownContainer = document.getElementById('dropdownContainer');
+			const isChecked = document.getElementById('toggleDropdown').checked;
+			const genomeContainer = document.getElementById('genomeContainer');
+			const dropdownContainer = document.getElementById('dropdownContainer');
 
-					if (isChecked) {
+			if (isChecked) {
 
-						var API = $('#txtApiPath').val();
-						var apiUrl = API + "/customUpload";
-						var action_2 = "list_data"
+				var API = $('#txtApiPath').val();
+				var apiUrl = API + "/customUpload";
+				var action_2 = "list_data"
 
-						$.ajax({
-							url: apiUrl + "?action=" + encodeURIComponent(action_2),
-							type: "GET",
-							success: function(data) {
-								var object_keys = data.object_keys;
+				$.ajax({
+					url: apiUrl + "?action=" + encodeURIComponent(action_2),
+					type: "GET",
+					success: function(data) {
+						var object_keys = data.object_keys;
 
-								console.log(object_keys)
+						var dropdown = $('#dropdown');
 
-                                var dropdown = $('#dropdown');
+						dropdown.empty();
 
-								dropdown.empty();
-                    			// dropdown.append('<option value="">Select an option</option>');
+						$.each(object_keys, function(index, key) {
+								dropdown.append('<option value="' + key + '">' + key + '</option>');
+						});
 
+						M.FormSelect.init(dropdown);
 
-								$.each(object_keys, function(index, key) {
-                        				dropdown.append('<option value="' + key + '">' + key + '</option>');
-								});
-
-								M.FormSelect.init(dropdown);
-
-
-								}, 
-								error: function(xhr, status, error) {
-									console.error('Error fetching S3 object keys:', error);
-								}
-
-							});
-
-						dropdownContainer.classList.remove('hidden');
-						genomeContainer.classList.add('hidden');
-
-					} else {
-
-						dropdownContainer.classList.add('hidden');
-						genomeContainer.classList.remove('hidden');
+					}, 
+					error: function(xhr, status, error) {
+						console.error('Error fetching S3 object keys:', error);
 					}
-				}
 
-				document.addEventListener('DOMContentLoaded', () => {
-					console.log("hello")
-					toggleInputs();
-					M.AutoInit();
 				});
 
-	</script>
+				dropdownContainer.classList.remove('hidden');
+				genomeContainer.classList.add('hidden');
 
+			} else {
+				dropdownContainer.classList.add('hidden');
+				genomeContainer.classList.remove('hidden');
+			}
+		}
+
+		document.addEventListener('DOMContentLoaded', () => {
+			toggleInputs();
+			M.AutoInit();
+		});
+	</script>
 </html>
