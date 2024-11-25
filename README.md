@@ -1,8 +1,8 @@
-# Crackling AWS
+# Crackling Cloud (using Amazon Web Services)
 
-[Crackling](https://github.com/bmds-lab/Crackling) is one of the leading CRISPR-Cas9 guide RNA design tools.
+[Crackling](https://github.com/bmds-lab/Crackling) is one of the leading CRISPR-Cas9 guide RNA design tools. 
 
-In this implementation of Crackling, serverless technologies by Amazon Web Services (AWS) are used. This architecture provides a highly-scalable and secure solution that comes with very little idle cost. It also means that anyone can design high-quality gRNA without having to send their data to a third-party -- bring the software to your data, rather than send your data to the software.
+In this implementation of Crackling, we use serverless technologies by Amazon Web Services (AWS) so anyone can design high-quality gRNA without having to send their data to a third-party.
 
 With thanks to our colleagues at the CSIRO for their support during the development of this edition of the pipeline.
 
@@ -12,7 +12,7 @@ For support, contact Jake Bradford.
 
 **The International Conference for High Performance Computing, Networking, Storage, and Analysis (Supercomputing) 2024**
 
-... in the Workshop: WHPC: Diversity and Inclusion for All
+... in the Workshop: "WHPC: Diversity and Inclusion for All" ([abstract](https://sc24.supercomputing.org/proceedings/workshops/workshop_pages/ws_whpc124.html))
 
 *Event-driven high-performance cloud computing for CRISPR-Cas9 guide RNA design*
 
@@ -20,7 +20,7 @@ Divya Joy<sup>1</sup>, Jacob Bradford<sup>1</sup>
 
 <sup>1</sup> Queensland University of Technology, Brisbane, Australia 
 
-**The Annual Conference of the Australian Bioinformatics and Computational Biology Society (2020)**
+**The Annual Conference of the Australian Bioinformatics and Computational Biology Society 2020**
 
 *CRISPR, faster, better - The Crackling method for whole-genome target detection*
 
@@ -53,15 +53,15 @@ For now, read the *Development instructions* section.
 
 **Be sure you have cloned this repository to your computer.**
 
-## 1. Install the AWS command-line interface
+**1. Install the AWS command-line interface**
 
 Follow the AWS Documentation for [Getting started with the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)
 
-## 2. Install the AWS Cloud Development Kit
+**2. Install the AWS Cloud Development Kit**
 
 Follow the AWS Documentation for [Getting started with the AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html)
 
-## 3. Shared objects (for binaries)
+**3. Shared objects (for binaries)**
 
 Collect all shared objects needed by compiled binaries.
 
@@ -79,7 +79,7 @@ then
 ldd layers/rnaFold/rnaFold/RNAfold | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
 ```
 
-## 4. Python Modules 
+**4. Python Modules **
 
 The `pip install -r' command is used frequently throught the following section. In some enviroments, this command errors out. If this occours, please view the requirments.txt file (referenced in the command) and use pip to install each library manually.
 
@@ -125,13 +125,15 @@ pip install -r requirements.txt
 deactivate
 ```
 
-## 5. Further Reading
+**5. Further Reading**
+
 Please now proceed to read the following documentation for futher install instructions (/understanding) for the application:
  - `<root>/layers/README.md`
  - `<root>/modules/README.md`
  - `<root>/aws/README.md`
 
-### 6. Deploying using the CDK
+**6. Deploying using the CDK**
+
 Working from the `<root>/aws` directory:
 ```bash
 # Run this during first deployment
