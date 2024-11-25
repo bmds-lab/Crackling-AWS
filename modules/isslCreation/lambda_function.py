@@ -121,7 +121,6 @@ def isslcreate(accession, tmp_fasta_dir):
 
     os.system(f"{isslBin} {offtargetfn} 20 8 {issl_path}")
 
-    #upload files to s3 -future me: isslOfftarget probably not required
     s3_destination_path = f"{accession}/issl"
     upload_dir_to_s3(s3_client, s3_bucket, tmp_dir, s3_destination_path)
 
@@ -143,7 +142,7 @@ def lambda_handler(event, context):
     if accession == 'fail':
         sys.exit('Error: No accession found.')
 
-    print("this is the accession", accession)
+    print(f"accession: {accession}")
     
     #check that file size meets current limitations - 600MB file
     _ = fasta_size_check(accession)
