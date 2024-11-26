@@ -89,7 +89,7 @@ def files_exist_s3_dir(s3_client, s3_bucket, s3_path, files_to_expect):
     return True
 
 # Send SQS message
-def send_sqs(sqsURL,msg):
+def sqs_send_message(sqsURL, msg):
     sqs = boto3.client('sqs')
     sqs.send_message(
         QueueUrl=sqsURL,
@@ -108,7 +108,7 @@ def recv(event):
     
     return json_obj,record['body']
 
-# Create context and event to run lambda_handlers
+# Enables modules to be ran on a local development machine, instead of AWS Lambda
 def local_lambda_invocation(genome,sequence,jobid):
     dictionary ={ 
         "Genome": genome, 
@@ -129,11 +129,11 @@ def local_lambda_invocation(genome,sequence,jobid):
     return event, context
 
 # perform an action on a job object from dydb, then perform a set on dydb in a threadsafe manner
-def set_job_table(dynamoDbClient,tableName,action, jobID):
+def set_job_table(dynamoDbClient, tableName, action, jobID):
     # keep trying to add data too db until 
     from boto3.dynamodb.conditions import Attr
     table = dynamoDbClient.Table(tableName)
-    
+
     while True:    
         #get current job
         job = table.get_item(Key={"JobID" : str(jobID)})['Item']
@@ -163,28 +163,21 @@ def set_job_table(dynamoDbClient,tableName,action, jobID):
                     raise err
 
 
-# Thread safe function too set the total number of tasks (to be completed) in jobs table
+# Thread safe function to set the total number of tasks (to be completed) in jobs table
 def set_task_total(dynamoDbClient, tableName, jobID, taskCount):
-    def setTotalTasks(job):
-        #update values
-        job["TotalTasks"] = taskCount
 
+    def setNumGuides(job):
+        job["NumGuides"] = taskCount
         return job
     
-    return set_job_table(dynamoDbClient, tableName, setTotalTasks, jobID)
+    return set_job_table(dynamoDbClient, tableName, setNumGuides, jobID)
 
 
-# Thread safe function too update the task counter in jobs table
-def update_task_counter(dynamoDbClient, tableName, jobID, taskCount):
-    # function to increment the task counter
+# Thread safe function to update the task counter in jobs table
+def update_task_counter(dynamoDbClient, tableName, jobID, field, taskCount):
+    
     def updateCompletedTasks(job):    
-        #update values
-        job["CompletedTasks"] += taskCount
-
+        job[field] += taskCount
         return job
     
     return set_job_table(dynamoDbClient, tableName, updateCompletedTasks, jobID)
-
-# Thread safe function too set the total number of tasks (to be completed) in jobs table
-def set_task_finished(dynamoDbClient, tableName, jobID):
-    set_task_total(dynamoDbClient, tableName, jobID, "Completed")

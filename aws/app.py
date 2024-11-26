@@ -23,6 +23,7 @@ from aws_cdk import (
     aws_iam as iam_,
     aws_s3 as s3_,
     aws_s3_deployment as s3d_,
+    aws_s3_notifications as s3n_,
     aws_cloudfront as cloudfront_,
     aws_cloudfront_origins as origins_,
     custom_resources as cr,
@@ -57,7 +58,7 @@ class CracklingStack(Stack):
             nat_gateways=1,
         )
 
-        ### Simple Storage Service (S3) is a key-object store that can host websites.
+        ### Simple Storage Service (S3) is a object store that can host websites.
         # This bucket is used for hosting the front-end application.
         s3Frontend = s3_.Bucket(self,
             "CracklingWebsite",
@@ -70,12 +71,12 @@ class CracklingStack(Stack):
 
         ### CloudFront is a content delivery network
         # The front-end application will be distributed via CloudFront
-        CracklingDistribution = cloudfront_.Distribution(self, "CracklingCloudfrontDistribution",
+        cloudFrontDistribution = cloudfront_.Distribution(self, "CracklingcloudFrontDistribution",
             default_behavior=cloudfront_.BehaviorOptions(origin=origins_.S3Origin(s3Frontend))
         )
 
         ### Export the CloudFront URL when the Stack has been created
-        cloudfront_url = CracklingDistribution.distribution_domain_name
+        cloudfront_url = cloudFrontDistribution.distribution_domain_name
         cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
 
         ### Create an S3 bucket to store genome data
@@ -631,8 +632,8 @@ class CracklingStack(Stack):
                                         '"data" : ['
                                         '   #foreach($targ in $allTargs) {'
                                         '       "Sequence": "$targ.Sequence.S",'
-                                        '       "Start": "$targ.Start.N",'
-                                        '       "End": "$targ.End.N",'
+                                        '       "Start": $targ.Start.N,'
+                                        '       "End": $targ.End.N,'
                                         '       "Strand": "$targ.Strand.S",'
                                         '       "Consensus": "$targ.Consensus.S",'
                                         '       "IsslScore": "$targ.IsslScore.S"'
@@ -731,9 +732,10 @@ class CracklingStack(Stack):
                                     '"data": ['
                                     '   #foreach($task in $allTasks) {'
                                     '       "JobID": "$task.JobID.S",'
-                                    '       "TotalTasks": "$task.TotalTasks.S",'
-                                    '       "CompletedTasks": "$task.CompletedTasks.N",'
-                                    '       "Version": "$task.Version.N"'
+                                    '       "NumGuides": $task.NumGuides.N,'
+                                    '       "NumScoredOntarget": $task.NumScoredOntarget.N,'
+                                    '       "NumScoredOfftarget": $task.NumScoredOfftarget.N,'
+                                    '       "Version": $task.Version.N'
                                     '   }#if($foreach.hasNext),#end'
                                     '   #end'
                                     ']'
@@ -790,8 +792,8 @@ class CracklingStack(Stack):
 
         ### The frontend contains a placeholder for the API URL
         # This Lambda function is invoked when the Stack is created or updated
-        replace_api_url_lambda = lambda_.Function(
-            self, "ReplaceApiUrlLambda",
+        lambdaUpdateFrontendWithApiUrl = lambda_.Function(
+            self, "lambdaUpdateFrontendWithApiUrl",
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/updateApiUrl"),
@@ -800,17 +802,26 @@ class CracklingStack(Stack):
                 "BUCKET_NAME": s3Frontend.bucket_name,
                 "OBJECT_KEY": "index.html",
                 "NEW_API_URL": apiRest_url,
-                "CLOUDFRONT_DISTRIBUTION_ID": CracklingDistribution.distribution_id
+                "CLOUDFRONT_DISTRIBUTION_ID": cloudFrontDistribution.distribution_id
             }, 
         )
 
-        s3Frontend.grant_read_write(replace_api_url_lambda)
+        s3Frontend.grant_read_write(lambdaUpdateFrontendWithApiUrl)
 
         s3FrontendDeploy = s3d_.BucketDeployment(
             self, "DeployFrontend",
             sources=[s3d_.Source.asset("../frontend")],
             destination_bucket=s3Frontend,
+            distribution=cloudFrontDistribution,
+            distribution_paths=["/*"], # this will invalidate everything in the CloudFront distribution
             retain_on_delete=False
+        )
+
+        # S3 Event Notification to trigger Lambda on index.html update
+        s3Frontend.add_event_notification(
+            s3_.EventType.OBJECT_CREATED,
+            s3n_.LambdaDestination(lambdaUpdateFrontendWithApiUrl),
+            s3_.NotificationKeyFilter(prefix="index.html")  # Only trigger for "index.html"
         )
               
         update_resource = cr.AwsCustomResource(self, "UpdateHtmlResource",
@@ -818,7 +829,7 @@ class CracklingStack(Stack):
                 "service": "Lambda",
                 "action": "invoke",
                 "parameters": {
-                    "FunctionName": replace_api_url_lambda.function_arn,
+                    "FunctionName": lambdaUpdateFrontendWithApiUrl.function_arn,
                 },
                 "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
             },
@@ -827,7 +838,7 @@ class CracklingStack(Stack):
                 "service": "Lambda",
                 "action": "invoke",
                 "parameters": {
-                    "FunctionName": replace_api_url_lambda.function_arn,
+                    "FunctionName": lambdaUpdateFrontendWithApiUrl.function_arn,
                 }, 
                 "physical_resource_id": cr.PhysicalResourceId.of("UpdateHtmlResource")
             },
@@ -835,16 +846,15 @@ class CracklingStack(Stack):
             policy=cr.AwsCustomResourcePolicy.from_statements([
                 iam_.PolicyStatement(
                     actions=["lambda:InvokeFunction"],
-                    resources=[replace_api_url_lambda.function_arn],
+                    resources=[lambdaUpdateFrontendWithApiUrl.function_arn],
                 ), 
                 iam_.PolicyStatement(
                     actions=["cloudfront:CreateInvalidation"],
                     resources=["*"],
-        )
+                )
             ])
         )
 
-        # s3FrontendDeploy.node.add_dependency(update_resource)
         update_resource.node.add_dependency(s3FrontendDeploy)
         
 

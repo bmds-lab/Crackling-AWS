@@ -58,7 +58,9 @@ def target_iterator(seq):
                     'start'     : m.start(),
                     'end'       : m.start() + 23,
                     'seq'       : target23,
-                    'strand'    : strand
+                    'strand'    : strand,
+                    'IsslScore' : None,
+                    'Consensus' : None
                 } 
     
     for possibleTarget in possibleTargets:
@@ -69,7 +71,7 @@ def target_iterator(seq):
 
 # Find target sites and add to dictionary, 'candidateTargets'.
 def find_targets(params):
-    taskCounter = 0
+    num_targets = 0
 
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
@@ -90,9 +92,9 @@ def find_targets(params):
                     MessageBody=msg,
                 )
 
-                taskCounter += 1 #increment task counter
+            num_targets += 1
 
-    return taskCounter
+    return num_targets
 
 
 def deleteCandidateTargets(jobid):
@@ -113,15 +115,15 @@ def lambda_handler(event, context):
     # events: insertions and deletions.
     # See: https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html
 
-    params,body = recv(event)
+    params, body = recv(event)
     
     accession = params['Genome']
     sequence = params['Sequence']
-    jobid = params['JobID']
+    jobId = params['JobID']
     
-    taskCount = find_targets(params) 
+    num_targets = find_targets(params) 
 
     # set the total number of tasks the job needs to complete
-    job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobid, taskCount)
+    job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobId, num_targets)
 
     return None

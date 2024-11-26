@@ -184,9 +184,9 @@
 							} else {
 								$.each(tasksPayload.data, function(i, task) {
 									$('#jobId').text(task.JobID);  
-									$('#totalTasks').text(task.TotalTasks);  
-									$('#completedTasks').text(task.CompletedTasks);  
-									$('#version').text(task.Version); 
+									$('#numGuides').text(task.NumGuides);
+									$('#numScoredOntarget').text(task.NumScoredOntarget);
+									$('#numScoredOfftarget').text(task.NumScoredOfftarget);
 									$('#statusMessage').show();
 								});
 							}
@@ -195,10 +195,7 @@
 							M.toast({html: 'Error fetching task tracking data.'});
 						}
 					});
-
 				});
-
-
 
 				$('#uploadButton').on('click', function(event) {
 				event.preventDefault();
@@ -406,9 +403,10 @@
 							</br>
 
 							<div id="statusMessage">
-								<div class="status-label">Processing status:</div>
-								<div class="status-results tooltipped" data-tooltip="Each gRNA has two associated tasks (i.e, on-target and off-target scores)">
-									<span id="completedTasks"></span> of <span id="totalTasks"></span> completed.
+								<div class="status-label">Identified <span id="numGuides"></span> candidate guides:</div>
+								<div class="status-results">
+									Finished evaluating the efficiency of <span id="numScoredOntarget"></span> <br>
+									Finished evaluating the specificity of : <span id="numScoredOfftarget"></span>
 								</div>
 							</div>
 

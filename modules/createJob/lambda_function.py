@@ -59,9 +59,10 @@ def lambda_handler(event, context):
     taskTrackingTable.put_item(
         Item={
             'JobID' : jobid,
-            'TotalTasks' : 'Creating',
-            'CompletedTasks' : 0,
-            'Version': 0
+            'NumGuides' : 0,
+            'NumScoredOfftarget' : 0,
+            'NumScoredOntarget': 0,
+            'Version' : 0 # used to avoid race conditions. not to be facing the end-user
         }
     )
     

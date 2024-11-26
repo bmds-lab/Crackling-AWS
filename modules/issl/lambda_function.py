@@ -169,6 +169,9 @@ def lambda_handler(event, context):
     # key: JobID, value: genome
     jobToGenomeMap = {}
     
+    # key: JobId, value: number of targets scored
+    jobToNumTargets = {}
+
     # score the targets in bulk first
     message = None
     
@@ -199,6 +202,8 @@ def lambda_handler(event, context):
             
         jobId = message['JobID']
 
+        jobToNumTargets[jobId] = 0
+
         if jobId not in jobToGenomeMap:
             # Fetch the job information so it is known which genome to use
             result = dynamodb_client.get_item(
@@ -213,8 +218,6 @@ def lambda_handler(event, context):
                 jobToGenomeMap[jobId] = genome
                 targetsToScorePerGenome[genome] = {}
                 ReceiptMessages[genome] = []
-                
-                print(jobId, genome)
             
             # Error - Empty fetched result from dynamodb
             else:
@@ -240,14 +243,14 @@ def lambda_handler(event, context):
         # Keep track of messages in batch for removal at later stage 
         ReceiptHandles[jobToGenomeMap[jobId]] = ReceiptHandles.get(jobToGenomeMap[jobId], [])
         ReceiptHandles[jobToGenomeMap[jobId]].append(record['receiptHandle'])
-    #print(f"Scoring guides on {len(targetsToScorePerGenome)} genome(s). Number of guides for each genome: ", [len(targetsToScorePerGenome[x]) for x in targetsToScorePerGenome])
-    
+
     #-----------------------------------
     #DETERMINING AVAILABLE SPACE
     #------------------------------------
 
     #get temp folder to download the issl files into
     tmp_dir = get_tmp_dir()
+
     #determine if local storage can download required issl files and remove unnecessary details if need be
     downloaded_genomes, skip_flag = downloadIsslFiles(targetsToScorePerGenome, tmp_dir)
     if (skip_flag):
@@ -264,32 +267,30 @@ def lambda_handler(event, context):
     #dictionary to list
     ReceiptHandles = [item for row in list(ReceiptHandles.values()) for item in row]
 
-    print(targetsToScorePerGenome)
-    
     #-------------------------------
     # SCORING
     #-------------------------------
 
     # Next iteration - for each genome, score its target sequences
+    num_scored = 0
     for genome in targetsToScorePerGenome:
-        # key: genome, value: list of dict
         targetsScored = CalcIssl(targetsToScorePerGenome[genome], downloaded_genomes[genome]['ISSL_FILE_PATH'])
-        # now update the database with scores
+
         for key in targetsScored:
             result = targetsScored[key]
-            #print({'JobID': result['JobID'], 'TargetID': result['TargetID'], 'key': key})
+
             response = TARGETS_TABLE.update_item(
                 Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
                 UpdateExpression='set IsslScore = :score',
                 ExpressionAttributeValues={':score': json.dumps(result['Score'])},
                 #ReturnValues='UPDATED_NEW'
             )
-            #print(f"Updating Job '{result['JobID']}'; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
-            #print(response)  
-        
-    #close temp issl file directory
+
+            jobToNumTargets[result['JobID']] += 1
+
+            num_scored += 1
+
     if os.path.exists(tmp_dir):
-        print("Cleaning Up...")
         shutil.rmtree(tmp_dir)  
 
     #------------------------------
@@ -311,6 +312,7 @@ def lambda_handler(event, context):
         )
 
     # Update task counter for each job
-    job = update_task_counter(dynamodb, task_tracking_table_name, jobId, 1)
+    for jobId in jobToNumTargets:
+        update_task_counter(dynamodb, task_tracking_table_name, jobId, "NumScoredOfftarget", jobToNumTargets[jobId])
 
     return (event)

@@ -388,7 +388,7 @@ def lambda_handler(event, context):
 
     # Update task counter for each job
     for jobID, task_count in job_tasks.items():
-        job = update_task_counter(dynamodb, task_tracking_table_name, jobID, task_count)
+        job = update_task_counter(dynamodb, task_tracking_table_name, jobID, "NumScoredOntarget", task_count)
 
     return (event)
     

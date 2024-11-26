@@ -152,7 +152,7 @@ def lambda_handler(event, context):
     # Create issl files
     isslcreate(accession, tmp_dir)
 
-    send_sqs(TARGET_SCAN_QUEUE, json_object) 
+    sqs_send_message(TARGET_SCAN_QUEUE, json_object) 
 
     print("These are the extracted file names", tmp_dir_fasta)
     
