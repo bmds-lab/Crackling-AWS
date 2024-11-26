@@ -56,15 +56,12 @@ def upload_dir_to_s3(s3_client,s3_bucket,path,s3_folder):
 def s3_object_exists(s3_client, s3_bucket, key):
     try:
         s3_client.head_object(Bucket=s3_bucket, Key=key)
-        print("Success - object exists.")
         return True
     except s3_client.exceptions.NoSuchKey:
-        print("Error - No such object.")
         return False
     except s3_client.exceptions.NoSuchBucket:
-        sys.exit('Error - No such bucket.')
+        return False
     except Exception as e:
-        print("No directory exists: "+ str(e))
         return False
 
 # determine if all wanted genome issl files exist

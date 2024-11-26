@@ -39,9 +39,11 @@ def CalcIssl(targets, genome_issl_file):
     tmpToScore = tempfile.NamedTemporaryFile('w', delete=False)
     tmpScored = tempfile.NamedTemporaryFile('w', delete=False)
 
+    ## ASSUMPTION: the order of guides to AND from ISSL is the same
+
     # Create a temporary file containing a list of candidate guides to score
     with open(tmpToScore.name, 'w+') as fp:
-        fp.write("\n".join([targets[x]['Seq20'] for x in targets]))
+        fp.write("\n".join([target['Seq'][0:20] for target in targets]))
         fp.write("\n")
 
     # call the scoring method
@@ -60,11 +62,10 @@ def CalcIssl(targets, genome_issl_file):
     # Extract the score and associate it with the candidate guide
     with open(tmpScored.name, 'r') as fp:
         lines = [x.split('\t') for x in fp.readlines()]
-        keys = list(targets.keys())
-        for key, targetScored in zip(keys, lines):
-            #include score to key if tmp file has successfully been populated by scoring func
+        for idx, targetScored in enumerate(lines):
             if len(targetScored) == 2:
-                targets[key]['Score'] = float(targetScored[1].strip())
+                targets[idx]['Score'] = float(targetScored[1].strip())
+
     return targets
     
 
@@ -72,78 +73,64 @@ def CalcIssl(targets, genome_issl_file):
 # HELPER FUNCS
 # ----------------------
 
-#Function to store number of targets and .issl file size by genome
-def getGenomeBatchData(genomeToTargets):
-    output = {}
-    for genome in genomeToTargets.keys():
-        info = {}
-        info['Length'] = len(genomeToTargets[genome])
-        s3_source_path = f"{genome}/issl/{genome}.issl"
-        info['Size'] = s3_get_file_size(s3_client, s3_bucket, s3_source_path) / BYTE_TO_MB_DIVIDER
-        output[genome] = info
-    return output
+# Function to store number of targets and .issl file size by genome
+def getGenomeBatchData(genomes):
+    return {
+        genome : s3_get_file_size(s3_client, s3_bucket, f"{genome}/issl/{genome}.issl") / BYTE_TO_MB_DIVIDER
+        for genome in genomes
+    }
 
 #Function to reduce by size of batch genome list and compare with max size
 def canLambdaStore(issl_dict):
-    totalSize = 0
-    for genome in issl_dict.keys():
-        totalSize += issl_dict[genome]['Size']
-    if (totalSize > MAX_EPHEMERAL_STORAGE_SIZE):
-        return False
-    return True
+    return sum(issl_dict.values()) > MAX_EPHEMERAL_STORAGE_SIZE
 
-#returns list of genomes that fit criteria and do not over exceed local storage
-def determineGenomesToKeep(issl_dict):
-    # sort dictionary by criteria: max length first, then by max size in case of match
-    priorityListGenomes = sorted(issl_dict, key=lambda x: (issl_dict[x]["Length"], issl_dict[x]["Size"]), reverse=True)
-    # keep track of memory to download
+# returns list of genomes that fit criteria and do not over exceed local storage
+def determine_genomes_to_download(issl_dict):
+    priorityListGenomes = sorted(issl_dict, key=lambda x: issl_dict[x], reverse=True)
     memory_used = 0
-    # output list constrained by total memory
-    downloadListGenomes = []
+    genomesToDownload = []
+
     for genome in priorityListGenomes:
-        total_memory = memory_used + issl_dict[genome]["Size"]
+        total_memory = memory_used + issl_dict[genome]
+
         if (total_memory < MAX_EPHEMERAL_STORAGE_SIZE):
-            downloadListGenomes.append(genome)
+            genomesToDownload.append(genome)
             memory_used = total_memory
-        else:
-            print(f"{genome} exceeds available storage. To be excluded from download list")
-    return downloadListGenomes
+
+    return genomesToDownload
 
 def s3_to_tmp(tmp_dir, accession):
-    download_info = {}
-    expected_file = f"{accession}.issl"
+    fp = f"{tmp_dir}/{accession}.issl"
 
-    #path locs
-    s3_source_path = f"{accession}/issl/{expected_file}"
-    tmp_download_path = f"{tmp_dir}/{expected_file}" 
-
-    s3_resource.meta.client.download_file(s3_bucket, s3_source_path, tmp_download_path)
+    s3_resource.meta.client.download_file(
+        s3_bucket, 
+        f"{accession}/issl/{accession}.issl", # file in S3
+        fp # local filesystem
+    )
     
-    download_info['ISSL_FILE_PATH'] = tmp_download_path
-    return download_info
+    return fp
 
 def sequentialGenomeDownload(tmp_dir, list_to_download):
-    genomeDownloadInfo = {}
-    for genome in list_to_download:
-        genomeDownloadInfo[genome] = s3_to_tmp(tmp_dir, genome)
-    return genomeDownloadInfo
+    return {
+        genome : s3_to_tmp(tmp_dir, genome)
+        for genome in list_to_download
+    }
 
-def downloadIsslFiles(genomeToTargets, tmp_dir):
-    genomes_in_batch = list(genomeToTargets.keys())
-    #empty batch
-    if (len(genomes_in_batch) <= 0):
-        sys.exit('Failure - No targets required to score')
-    if not issl_files_exist_s3(s3_client, s3_bucket, genomes_in_batch):
-        sys.exit('Failure - The required issl files are missing')
+def downloadIsslFiles(genomes, tmp_dir):
+    if len(genomes) <= 0:
+        print('Failure - No targets required to score')
 
-    genomes_batch_info = getGenomeBatchData(genomeToTargets)
-    #download genomes that fit criteria
+    if not issl_files_exist_s3(s3_client, s3_bucket, genomes):
+        print('Failure - The required issl files are missing')
+
+    genomes_batch_info = getGenomeBatchData(genomes)
+
     if not canLambdaStore(genomes_batch_info):
-        genomes_to_download = determineGenomesToKeep(genomes_batch_info)
+        genomes_to_download = determine_genomes_to_download(genomes_batch_info)
         return sequentialGenomeDownload(tmp_dir, genomes_to_download), True
-    #download all genomes
+
     else:
-        return sequentialGenomeDownload(tmp_dir, genomes_in_batch), False
+        return sequentialGenomeDownload(tmp_dir, genomes), False
 
 def resendGenomeToSQS(entries):
     print("Sending back to sqs")
@@ -192,7 +179,7 @@ def lambda_handler(event, context):
         try:
             body = json.loads(record['body'])
             message = json.loads(body['default'])
-        except e:
+        except Exception as e:
             print(f"Exception: {e}")
             continue
 
@@ -218,7 +205,7 @@ def lambda_handler(event, context):
             if 'Item' in result:
                 genome = result['Item']['Genome']['S']
                 jobToGenome[jobId] = genome
-                genomeToTargets[genome] = {}
+                genomeToTargets[genome] = []
                 receiptMessages[genome] = []
             
             # Error - Empty fetched result from dynamodb
@@ -226,47 +213,41 @@ def lambda_handler(event, context):
                 print(f'No matching JobID: {jobId}???')
                 receiptHandles.append(record['receiptHandle'])
                 continue
-
-        # Extract target guide sequence (21-length long)
-        seq20 = message['Sequence'][0:20]
+        else:
+            genome = jobToGenome[jobId]
 
         # Map guide sequences to genome and prepare dictionary structure for scoring in next iteration
-        genomeToTargets[jobToGenome[jobId]][message['Sequence']] = {
+        genomeToTargets[genome].append({
             'JobID'     : jobId,
             'TargetID'  : message['TargetID'],
             'Seq'       : message['Sequence'],
-            'Seq20'     : seq20,
-            'Score'     : None,
-        }
+            'Score'     : None
+        })
         
         #keep track of message sent by target scan function in case of resending required
-        receiptMessages[jobToGenome[jobId]].append(body)
+        receiptMessages[genome].append(body)
         
-        # Keep track of messages in batch for removal at later stage 
-        receiptHandles[jobToGenome[jobId]] = receiptHandles.get(jobToGenome[jobId], [])
-        receiptHandles[jobToGenome[jobId]].append(record['receiptHandle'])
+        receiptHandles.setdefault(genome, []).append(record['receiptHandle'])
 
     #-----------------------------------
-    #DETERMINING AVAILABLE SPACE
+    # DETERMINING AVAILABLE SPACE
     #------------------------------------
 
-    #get temp folder to download the issl files into
+    # get temp folder to download the issl files into
     tmp_dir = get_tmp_dir()
 
-    #determine if local storage can download required issl files and remove unnecessary details if need be
-    downloaded_genomes, skip_flag = downloadIsslFiles(genomeToTargets, tmp_dir)
+    # determine if local storage can download required issl files and remove unnecessary details if need be
+    downloaded_genomes, skip_flag = downloadIsslFiles(list(genomeToTargets.keys()), tmp_dir)
     if (skip_flag):
-        genomes_to_remove = [item for item in list(genomeToTargets.keys()) if item not in list(downloaded_genomes)]
-        #remove from scoring and sqs deletion
-        for accession in genomes_to_remove:
-            #disqualify genome from being scored
-            genomeToTargets.pop(accession)
-            receiptHandles.pop(accession)
-            #send messages back into queue - there must a retry mechanism in the future
-            messageToResend = receiptMessages.pop(accession)
-            resendGenomeToSQS(messageToResend)
-            
-    #dictionary to list
+
+        genomes_to_remove = [genome for genome in genomeToTargets if genome not in downloaded_genomes]
+
+        for genome in genomes_to_remove:
+            genomeToTargets.pop(genome)
+            receiptHandles.pop(genome)
+
+            resendGenomeToSQS(receiptMessages.pop(genome))
+
     receiptHandles = [item for row in list(receiptHandles.values()) for item in row]
 
     #-------------------------------
@@ -274,23 +255,19 @@ def lambda_handler(event, context):
     #-------------------------------
 
     # Next iteration - for each genome, score its target sequences
-    num_scored = 0
     for genome in genomeToTargets:
-        targetsScored = CalcIssl(genomeToTargets[genome], downloaded_genomes[genome]['ISSL_FILE_PATH'])
+        targetsScored = CalcIssl(genomeToTargets[genome], downloaded_genomes[genome])
 
-        for key in targetsScored:
-            result = targetsScored[key]
+        for result in targetsScored:
 
-            response = TARGETS_TABLE.update_item(
+            TARGETS_TABLE.update_item(
                 Key={'JobID': result['JobID'], 'TargetID': result['TargetID']},
                 UpdateExpression='set IsslScore = :score',
-                ExpressionAttributeValues={':score': json.dumps(result['Score'])},
-                #ReturnValues='UPDATED_NEW'
+                ExpressionAttributeValues={':score': json.dumps(result['Score'])}
             )
 
-            jobToNumTargets[result['JobID']] += 1
-
-            num_scored += 1
+            #jobToNumTargets[result['JobID']] += 1
+            update_task_counter(dynamodb, task_tracking_table_name, result['JobID'], "NumScoredOfftarget", 1)
 
     if os.path.exists(tmp_dir):
         shutil.rmtree(tmp_dir)  
@@ -314,7 +291,5 @@ def lambda_handler(event, context):
         )
 
     # Update task counter for each job
-    for jobId in jobToNumTargets:
-        update_task_counter(dynamodb, task_tracking_table_name, jobId, "NumScoredOfftarget", jobToNumTargets[jobId])
-
-    return (event)
+    #for jobId in jobToNumTargets:
+    #    update_task_counter(dynamodb, task_tracking_table_name, jobId, "NumScoredOfftarget", jobToNumTargets[jobId])
