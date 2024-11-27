@@ -33,8 +33,7 @@ def lambda_handler(event, context):
                                                                     'Key':   folder_name + '/' + 'fasta/' + file_name, 
                                                                     'ContentType': file_type},
                                                             ExpiresIn=3600)
-                print(presigned_url)
-
+                
             # Return the presigned URL as part of the response
                 return {
                     'statusCode': 200,

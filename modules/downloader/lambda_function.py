@@ -53,7 +53,7 @@ def retrieve_fasta_meta_data(genome_accession):
         ftp.sendcmd("TYPE i")
         fna_file_details = []
         for file in files:
-            if ".fna" in file:
+            if "genomic.fna" in file and "from_genomic" not in file:
                 file_size = ftp.size(file)
                 print(f"{file}: {file_size} bytes")
                 fna_file_details.append({"file_name": file, "file_size": file_size})
