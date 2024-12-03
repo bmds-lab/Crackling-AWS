@@ -158,6 +158,13 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
                 break
             except OSError as e:
                 if e.errno == 24:
+                    
+                    for file in sortedFilesPointers:
+                        try:
+                            file.close()
+                        except Exception as e:
+                            pass
+
                     print(f'Attempted to open too many files at once (OSError errno 24)')
                     maxNumOpenFiles = max(1, int(maxNumOpenFiles / 2))
                     print(f'Reducing the number of files that can be opened by half to {maxNumOpenFiles}')
@@ -177,7 +184,7 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
         # prepare for the next set to be merged
         sortedFiles = sortedFiles[maxNumOpenFiles:] + [mergedFile.name]
     
-    shutil.move(mergedFile.name, fpOutput)
+    shutil.move(sortedFiles[0], fpOutput)
 
 def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
     print('Extracting off-targets using sequental-processing approach')

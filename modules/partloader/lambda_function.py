@@ -180,7 +180,6 @@ def are_all_files_uploaded(num_files, accession):
 
 
 def lambda_handler(event, context):
-    # total_parts = 7
     args,body = recv(event)
 
     accession = args['Genome']

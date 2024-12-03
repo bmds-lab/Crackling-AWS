@@ -352,7 +352,7 @@ class CracklingStack(Stack):
             layers=[lambdaLayerCommonFuncs,lambdaLayerNcbi,lambdaLayerLib],
             vpc=cracklingVpc,
             timeout= duration,
-            memory_size= 10240,
+            memory_size= 2065,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3GenomeAccess.attr_arn,
