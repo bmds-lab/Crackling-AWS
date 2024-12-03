@@ -14,16 +14,18 @@ Output:     one file with all the sites
 To use:     python3.7 ExtractOfftargets.py output-file  (input-files... | input-dir>)
 
 ''' 
-# /usr/bin/python3 /config/genomes/extractOfftargets.py genomes/test /config/genomes/test/fasta/chr.fa,/config/genomes/test/fasta/chrpMETAL01.fa
-
 import glob, os, re, shutil, sys, tempfile, heapq, argparse
-from crackling.Helpers import *
-from crackling.Paginator import Paginator
 
 # Defining the patterns used to detect sequences
 pattern_forward_offsite = r"(?=([ACG][ACGT]{19}[ACGT][AG]G))"
 pattern_reverse_offsite = r"(?=(C[CT][ACGT][ACGT]{19}[TGC]))"
 
+# Function that returns the reverse-complement of a given sequence
+def rc(dna):
+    complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
+    rcseq = dna.translate(complements)[::-1]
+    return rcseq
+    
 def explodeMultiFastaFile(fpInput, fpOutputTempDir):
     newFilesPaths = []
 
@@ -128,12 +130,12 @@ def sortingNode(fileToSort, sortedTempDir):
 def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400): 
     # Create temp file directory
     sortedTempDir = tempfile.TemporaryDirectory()
-    printer(f'Created temp directory {sortedTempDir.name} for sorting')
+    print(f'Created temp directory {sortedTempDir.name} for sorting')
 
     for f in filesToSort:
         sortingNode(f,sortedTempDir.name)
     
-    printer('Sorting of each file completed')
+    print('Sorting of each file completed')
     
     # Collect sorted files to merge
     sortedFiles = glob.glob(
@@ -144,7 +146,7 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
     )
     
     # Open all the sorted files to merge
-    printer(f'Beginning to merge sorted files, {maxNumOpenFiles:,} at a time')
+    print(f'Beginning to merge sorted files, {maxNumOpenFiles:,} at a time')
     while len(sortedFiles) > 1:
         # A file to write the merged sequences to
         mergedFile = tempfile.NamedTemporaryFile(delete = False)
@@ -156,13 +158,20 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
                 break
             except OSError as e:
                 if e.errno == 24:
-                    printer(f'Attempted to open too many files at once (OSError errno 24)')
+                    
+                    for file in sortedFilesPointers:
+                        try:
+                            file.close()
+                        except Exception as e:
+                            pass
+
+                    print(f'Attempted to open too many files at once (OSError errno 24)')
                     maxNumOpenFiles = max(1, int(maxNumOpenFiles / 2))
-                    printer(f'Reducing the number of files that can be opened by half to {maxNumOpenFiles}')
+                    print(f'Reducing the number of files that can be opened by half to {maxNumOpenFiles}')
                     continue
                 raise e
                     
-        printer(f'Merging {len(sortedFilesPointers):,}')
+        print(f'Merging {len(sortedFilesPointers):,}')
         
         # Merge and write
         with open(mergedFile.name, 'w') as f:
@@ -175,15 +184,15 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
         # prepare for the next set to be merged
         sortedFiles = sortedFiles[maxNumOpenFiles:] + [mergedFile.name]
     
-    shutil.move(mergedFile.name, fpOutput)
+    shutil.move(sortedFiles[0], fpOutput)
 
 def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
-    printer('Extracting off-targets using sequental-processing approach')
+    print('Extracting off-targets using sequental-processing approach')
     
-    printer(f'Allowed processes: {numThreads}')
+    print(f'Allowed processes: {numThreads}')
     
     fpTempDir = tempfile.TemporaryDirectory()
-    printer(f'Created a temporary directory for intermediate files: {fpTempDir.name}')
+    print(f'Created a temporary directory for intermediate files: {fpTempDir.name}')
 
     if len(fpInputs) == 1 and os.path.isdir(fpInputs[0]):
         fpInputs = glob.glob(
@@ -194,11 +203,11 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
         )
 
     if len(fpInputs) == 1:
-        printer('Only one input file to process')
+        print('Only one input file to process')
         
         fpExplodeTempDir = tempfile.TemporaryDirectory()
-        printer('Attempting to explode multi-FASTA file')
-        printer(f'Writing each file to a temporary directory: {fpExplodeTempDir.name}')
+        print('Attempting to explode multi-FASTA file')
+        print(f'Writing each file to a temporary directory: {fpExplodeTempDir.name}')
         
     
         fpInputs = explodeMultiFastaFile(
@@ -206,9 +215,9 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
             fpExplodeTempDir.name
         )
         
-        printer(f'Exploded into {len(fpInputs)} files')
+        print(f'Exploded into {len(fpInputs)} files')
 
-    printer(f'Beginning to process {len(fpInputs)} files')
+    print(f'Beginning to process {len(fpInputs)} files')
 
     # Submit job to "multiprocessing pool"
     f = lambda x: processingNode(x,fpTempDir.name)
@@ -217,9 +226,9 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
         fpInputs#args
     )
 
-    printer(f'Processing completed. Found {sum(numTargets):,} targets.')
+    print(f'Processing completed. Found {sum(numTargets):,} targets.')
     
-    printer('Preparing for ISSL by sorting all intermediate files')
+    print('Preparing for ISSL by sorting all intermediate files')
     
     # sort in batches
     paginatedSort(
@@ -232,7 +241,7 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
         fpOutput,
         maxNumOpenFiles=maxOpenFiles
     )
-    printer("end reached. Goodbye")
+    print("end reached. Goodbye")
 
 def main():
     parser = argparse.ArgumentParser(description='Extract CRISPR target sites for Crackling.')
@@ -270,7 +279,7 @@ def main():
         args.maxOpenFiles
     )
 
-    printer('Goodbye.')
+    print('Goodbye.')
 
 if __name__ == '__main__':
     main()

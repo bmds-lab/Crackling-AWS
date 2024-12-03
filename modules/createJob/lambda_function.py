@@ -1,9 +1,8 @@
-import boto3, json, uuid, os, time
+import boto3, json, uuid, os
 
-from time import time,time_ns, sleep
+from time import time
 from datetime import datetime
 from common_funcs import *
-
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
@@ -40,11 +39,6 @@ def lambda_handler(event, context):
             return return_http_json(400, 'If specified, sequence must not be empty.', ['sequence'])
         elif len(sequence) > int(MAX_SEQ_LENGTH):
             return return_http_json(400, f'The specified sequence is too long (max length = {MAX_SEQ_LENGTH})', ['sequence'])
-        
-    if 'email' in job_request:
-        email = job_request['email'].replace('\r\n', '').replace('\r', '').replace('\n', '').replace(' ', '')
-    else:
-        email = None
 
     genome = job_request['genome']
 
@@ -57,8 +51,7 @@ def lambda_handler(event, context):
             'Sequence' : sequence,
             'DateTime' : int(time()),
             'DateTimeHuman' : str(datetime.now()),
-            'Genome' : genome,
-            'Email' : email
+            'Genome' : genome
         }
     )
 
@@ -66,16 +59,16 @@ def lambda_handler(event, context):
     taskTrackingTable.put_item(
         Item={
             'JobID' : jobid,
-            'TotalTasks' : "Creating",
-            'CompletedTasks' : 0,
-            'Version': 0
+            'NumGuides' : 0,
+            'NumScoredOfftarget' : 0,
+            'NumScoredOntarget': 0,
+            'Version' : 0 # used to avoid race conditions. not to be facing the end-user
         }
     )
     
     body = json.dumps({
         'aws_request_id' : context.aws_request_id,
-        'JobID' : jobid,
-        'Genome' : genome # for debug
+        'JobID' : jobid
     })
 
     

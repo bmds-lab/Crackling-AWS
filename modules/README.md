@@ -26,7 +26,3 @@ This lambda function depends on the ISSL file created in isslCreation to be used
 ## consensus
 This is a scoring function for "on-target" in CRISPR-Cas9. The function uses three existing libraries like CHOPCHOPm sgRNAScorer2.0, mm10db to determine its appropriateness. The function consumes a batch from CONSENSUS_SQS (input) which contains the same information as issl function. Compared to issl, the max size of the batch is 100 records due to less intensive procedures required. Similarly to issl, this function exhibits parallelism achieved via the sqs batches.
 The function is very quick to run ~2 seconds at most. Similarly, the scores are sent to DynamoDB for access by website query. The jobid is used to sort and structure differing jobs in a batch. 
-
-## Notifier
-The notifier module sends an email to the user (optionally) when their job is complete. To do this, the system interacts (in the consensus and ISSL modules) with the task tracking DynamoDB table to check if all tasks are complete. If they are, the notifier is spawned and uses SES to email a user
-

@@ -14,8 +14,7 @@ except ImportError:
     print('ncbi.datasets module not found. To install, run `pip install ncbi-datasets-pylib`.')
 
 # Global variables
-s3_bucket = os.environ['BUCKET']
-#starttime = time_ns()
+S3_BUCKET = os.environ['BUCKET']
 TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
 ISSL_QUEUE = os.getenv('ISSL_QUEUE')
 LIST_PREFIXES = [".issl", ".offtargets"]
@@ -54,7 +53,7 @@ def retrieve_fasta_meta_data(genome_accession):
         ftp.sendcmd("TYPE i")
         fna_file_details = []
         for file in files:
-            if ".fna" in file:
+            if "genomic.fna" in file and "from_genomic" not in file:
                 file_size = ftp.size(file)
                 print(f"{file}: {file_size} bytes")
                 fna_file_details.append({"file_name": file, "file_size": file_size})
@@ -129,7 +128,7 @@ def file_parts(genome_accession, http_url, fna_file_details, json_object):
             # part_size = math.ceil(chosen_file_size / num_file_parts)  # Size of each part
 
             # initialise the multipart upload
-            upload_id = start_part_upload(s3_bucket, genome_accession, chosen_file_name)
+            upload_id = start_part_upload(S3_BUCKET, genome_accession, chosen_file_name)
             for i in range(num_file_parts):
                 start_byte = i * part_size
                 end_byte = min((i + 1) * part_size - 1, chosen_file_size - 1)
@@ -163,8 +162,8 @@ def is_issl_in_s3(accession):
     for prefix in LIST_PREFIXES:
         files_to_expect.append(accession + prefix)
 
-    actual = files_exist_s3_dir(s3_client, s3_bucket, s3_destination_path, files_to_expect)
-    test = files_exist_s3_dir(s3_client, s3_bucket, s3_multipart_destination_part2, files_to_expect)
+    actual = files_exist_s3_dir(s3_client, S3_BUCKET, s3_destination_path, files_to_expect)
+    test = files_exist_s3_dir(s3_client, S3_BUCKET, s3_multipart_destination_part2, files_to_expect)
 
     return actual, test
 
@@ -172,7 +171,7 @@ def is_issl_in_s3(accession):
 def is_fasta_in_s3_multipart(accession):
     try:
         s3_multipart_destination_folder =  f"{accession}/fasta"
-        response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix= s3_multipart_destination_folder)
+        response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix= s3_multipart_destination_folder)
         
         if 'Contents' in response:
             for obj in response['Contents']:
@@ -215,19 +214,19 @@ def lambda_handler(event, context):
         print("The fasta files have yet to be created")
         for file in file_names:
             MessageBody=json.dumps(file)
-            sendSQS(FILE_PARTS_QUEUE, MessageBody)
+            sqs_send_message(FILE_PARTS_QUEUE, MessageBody)
         print(file_names)
     else:
         if  mulit_part_issl:
             print ("Issl file has already been generated. Moving to scoring process")
-            sendSQS(TARGET_SCAN_QUEUE, json_object) 
+            sqs_send_message(TARGET_SCAN_QUEUE, json_object) 
             print("All Done... Terminating Program.")
         else:
             print("The fasta files exist but the issl ones do not")
-            sendSQS(ISSL_QUEUE, json_object)
+            sqs_send_message(ISSL_QUEUE, json_object)
 
     print("All Done... Terminating Program.")
 
 if __name__== "__main__":
-    event, context = main()
+    event, context = local_lambda_invocation()
     lambda_handler(event, context)

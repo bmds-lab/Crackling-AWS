@@ -1,24 +1,11 @@
-import json
-import boto3
-import os
-import tempfile
-import glob
-#import joblib
-import re
-import ast
+import ast, glob, io, json, os, re, shutil, subprocess, sys, tempfile, zipfile
+from subprocess import call
 from time import time_ns
 
-#from sklearn.svm import SVC
-from subprocess import call
+import boto3
 from common_funcs import *
 
-
-import subprocess 
-import sys, zipfile, io, shutil
-
 s3_bucket = os.environ['BUCKET']
-
-
 
 ######################## Setting up python packages required to run model ##################################
 
@@ -81,14 +68,6 @@ def install_and_upload_sklearn_to_s3(s3_bucket, s3_key, package_name='scikit-lea
             shutil.rmtree(temp_dir)
         except Exception as cleanup_error:
             print(f"Failed to remove temporary directory")
-
-def get_directory_size(directory):
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(directory):
-        for filename in filenames:
-            filepath = os.path.join(dirpath, filename)
-            total_size += os.path.getsize(filepath)
-    return total_size
     
 def handle_sklearn_package():
 
@@ -100,7 +79,6 @@ def handle_sklearn_package():
     print(f"Created temporary folder {temp_dir_py}")
     
     try:
-        
         response = s3_client.get_object(Bucket=bucket_name, Key=zip_file_key)
         zip_content = response['Body'].read()
         zip_size = len(zip_content)
@@ -117,10 +95,6 @@ def handle_sklearn_package():
         print(f"unzipping file to temporary directory: {temp_dir_py}")
         with zipfile.ZipFile(io.BytesIO(zip_content)) as z:
             z.extractall(temp_dir_py)
-        
-
-        dir_size_py = get_directory_size(temp_dir_py)
-        print(f"size of unzipped directory {dir_size_py} bytes")
 
         python_dir = temp_dir_py
         sys.path.insert(0, python_dir) # add path to python packages to system path
@@ -178,7 +152,6 @@ SGRNASCORER2_MODEL = joblib.load('/opt/model-py38-svc0232.txt')
 call(f"cp -r /opt/rnaFold /tmp/rnaFold".split(' '))
 call(f"chmod -R 755 /tmp/rnaFold".split(' '))
 BIN_RNAFOLD = r"/tmp/rnaFold/RNAfold"
-#os.chmod(BIN_RNAFOLD, 755)
 
 low_energy_threshold = -30
 high_energy_threshold = -18
@@ -186,7 +159,6 @@ high_energy_threshold = -18
 targets_table_name = os.getenv('TARGETS_TABLE', 'TargetsTable')
 task_tracking_table_name = os.getenv('TASK_TRACKING_TABLE')
 consensus_queue_url = os.getenv('CONSENSUS_QUEUE', 'ConsensusQueue')
-notification_queue_url = os.getenv('NOTIFICATION_QUEUE')
 
 sqs_client = boto3.client('sqs')
 
@@ -355,10 +327,8 @@ def lambda_handler(event, context):
     recordsByJobID = {}
     
     ReceiptHandles = []
-    print(event)
     for record in event['Records']:
         genome = ""
-        #print(record)
         try:
             message = json.loads(record['body'])
             genome = json.loads(message['genome'])
@@ -380,13 +350,8 @@ def lambda_handler(event, context):
         }
             
         ReceiptHandles.append(record['receiptHandle'])
-       
-    #print(f"Processing {len(records)} guides.")
-    
-    print(recordsByJobID)
-    results = CalcConsensus(recordsByJobID)
-    print(results)
 
+    results = CalcConsensus(recordsByJobID)
 
     # track number of tasks completed for each job by counting instances of each jobID
     job_tasks = {}
@@ -406,10 +371,7 @@ def lambda_handler(event, context):
                 job_tasks.update({result['JobID'] : 1})
             else:
                 job_tasks[result['JobID']] += 1
-        
-            #print(f"Updating Job {result['JobID']}; Guide #{result['TargetID']}; ", response['ResponseMetadata']['HTTPStatusCode'])
-        
-    
+
     # remove messages from the SQS queue. Max 10 at a time.
     for i in range(0, len(ReceiptHandles), 10):
         toDelete = [ReceiptHandles[j] for j in range(i, min(len(ReceiptHandles), i+10))]
@@ -424,12 +386,9 @@ def lambda_handler(event, context):
             ]
         )
 
-    # Update task counter for each job, and spawn a notification if a job is completed    
+    # Update task counter for each job
     for jobID, task_count in job_tasks.items():
-        job = update_task_counter(dynamodb, task_tracking_table_name, jobID, task_count)
-
-        #notify user if job is completed
-        spawn_notification_if_complete(dynamodb, task_tracking_table_name, job, notification_queue_url)
+        job = update_task_counter(dynamodb, task_tracking_table_name, jobID, "NumScoredOntarget", task_count)
 
     return (event)
     
