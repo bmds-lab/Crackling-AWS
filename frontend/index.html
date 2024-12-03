@@ -1,17 +1,6 @@
 <html>
-
 	<head>
 		<title>Crackling</title>
-		
-		<!-- Global site tag (gtag.js) - Google Analytics -->
-		<script async src="https://www.googletagmanager.com/gtag/js?id=G-MMQYQKBXNX"></script>
-		<script>
-		    window.dataLayer = window.dataLayer || [];
-		    function gtag(){dataLayer.push(arguments);}
-		    gtag('js', new Date());
-		    
-		    gtag('config', 'G-MMQYQKBXNX');
-		</script>
 		
 		<!--Import JQuery v3.5.1 -->
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
@@ -24,6 +13,52 @@
 
 		<!-- Compiled and minified JavaScript -->
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+
+		<!-- Custom CSS for loading spinner -->
+		<style>
+			.loading-circle {
+				border: 8px solid #f3f3f3; 
+				border-top: 8px solid #3498db; 
+				border-radius: 50%;
+				width: 50px;
+				height: 50px;
+				animation: spin 1s linear infinite;
+				margin: 20px auto;
+			}
+	
+			@keyframes spin {
+				0% { transform: rotate(0deg); }
+				100% { transform: rotate(360deg); }
+			}
+	
+			#spinner {
+				display: none;
+				text-align: center;
+			}
+
+			#statusMessage {
+				background-color: #f0f0f0;
+				border: 1px solid #ccc;
+				padding: 10px;
+				margin-bottom: 20px;
+				color: #333;
+				display: none; 
+				border-radius: 8px; 
+			}
+
+			.status-label {
+				font-weight: bold;
+				font-size: 1.1em;
+			}
+			.status-results {
+				margin-top: 5px; 
+			}
+			.divNav { margin-bottom: 2em; }
+			.cracklingLogo { margin-left: 1em; }
+			.dnaSeq { font-family: Courier New; }
+			.hidden { display: none; }
+		</style>
             
 		
 		<script>
@@ -35,8 +70,7 @@
 				$('.tooltipped').tooltip();
 				$('.collapsible').collapsible();
 				$('select').formSelect();
-				
-				
+
 				// Submit a job
 				$('#btnSubmitJob').on('click', function() {
 					API = $('#txtApiPath').val();
@@ -49,37 +83,39 @@
 
 					var regex2 = new RegExp("^G[A-Z]{2}_[0-9]{9}.[0-9]+");
 					if (!regex2.test($('#genome').val())) {
-						M.toast({html: 'Your genome accession should be in GXX_XXXXXXXXX.X form. The virus accession form is not currently supported.'});
+						M.toast({html: 'Your genome accession should be in GXX_XXXXXXXXX.X form.'});
 						return 0;
 					}
-					
-					//if ($('#genome').val() != "") {
-					//	M.toast({html: 'You must select a genome for off-target scoring.'});
-					//	return 0;
-					//}
-					console.log(JSON.stringify({
-							'sequence' 	: $('#sequence').val(),
-							'genome'	: $('#genome').val()
-						}))
-				
+
+                    // change the value of the genome based on 
+                    var useDropdown = $('#toggleDropdown').is(':checked');
+                    var genome;
+
+                    if (useDropdown) {
+                        genome = $('#dropdown').val(); // Use the value from the dropdown
+                    } else {
+                        genome = $('#genome').val(); // Use the value from the input box
+                    }
+
 					$.ajax({
 						url: API + '/submit', 
 						data: JSON.stringify({
 							'sequence' 	: $('#sequence').val(),
-							'genome'	: $('#genome').val()
+							'genome'	: genome
 						}), 
 						type: "POST", 
 						contentType: "application/json",
 						success: function(data) {
-							console.log(data);
 							$('#txtJobId').val(data.JobID);
 							$('.tabs').tabs('select', 'tabResults');
 							$('#tblResults').find("tr:gt(0)").remove();
 						}, 
 						error: function (request, status, error) {
 							M.toast({html: 'Something went wrong: ' + error});
+							console.log(error)
 						}
 					});
+
 				});
 				
 				// Get job results
@@ -91,6 +127,7 @@
 						M.toast({html: 'You have not entered a job ID.'});
 						return 0;
 					}
+
 					$.ajax({
 						url: API + '/results/' + jobid + '/targets',
 						type: "GET", 
@@ -101,21 +138,25 @@
 								return 0;
 							}
 							$('#tblResults').find("tr:gt(0)").remove();
+
 							$.each(payload.data, function(i, item) {
-								// todo: tidy this up!!
-								c = item.Consensus.split(',').map(Number);
-								cStr = "Accepted by:";
-								if (c[0]) { cStr += " CHOPCHOP"; }
-								if (c[1]) { cStr += " mm10db"; }
-								if (c[1]) { cStr += " sgRNAScorer 2.0"; }
-								cCount = c[0] + c[1] + c[2];
-								
-								if (cCount >= 2) {
-									consensus = '<span style="color: green" title="'+cStr+'">Passed ('+cCount+' / 3)</span>';
+								if (item.Consensus == '') {
+									consensus = '';
 								} else {
-									consensus = '<span style="color: red" title="'+cStr+'">Failed ('+cCount+' / 3)</span>';
+									c = item.Consensus.split(',').map(Number);
+									cStr = "Accepted by:";
+									if (c[0]) { cStr += " CHOPCHOP"; }
+									if (c[1]) { cStr += " mm10db"; }
+									if (c[1]) { cStr += " sgRNAScorer 2.0"; }
+									cCount = c[0] + c[1] + c[2];
+									
+									if (cCount >= 2) {
+										consensus = '<span style="color: green" title="'+cStr+'" class="tooltipped" data-tooltip="This guide is efficient ('+cStr+')">'+cCount+' / 3</span>';
+									} else {
+										consensus = '<span style="color: red" title="'+cStr+'" class="tooltipped" data-tooltip="This guide is not efficient ('+cStr+')">'+cCount+' / 3</span>';
+									}
 								}
-								
+
 								var $tr = $('<tr>').append(
 									$('<td>').text(item.Start),
 									$('<td>').text(item.End),
@@ -125,23 +166,104 @@
 									$('<td>').text(item.IsslScore)
 								).appendTo('#tblResults');
 							});
+
 						}, 
 						error: function (request, status, error) {
 							console.log(error);
 						}
 					});
+
+					// Fetch Tasks Data
+					$.ajax({
+						url: API + '/jobs/' + jobid + '/tasks',
+						type: "GET", 
+						contentType: "application/json",
+						success: function(tasksPayload) {
+							if (tasksPayload.recordsTotal == 0) {
+								M.toast({html: 'No tracking data'});
+							} else {
+								$.each(tasksPayload.data, function(i, task) {
+									$('#jobId').text(task.JobID);  
+									$('#numGuides').text(task.NumGuides);
+									$('#numScoredOntarget').text(task.NumScoredOntarget);
+									$('#numScoredOfftarget').text(task.NumScoredOfftarget);
+									$('#statusMessage').show();
+								});
+							}
+						},
+						error: function() {
+							M.toast({html: 'Error fetching task tracking data.'});
+						}
+					});
 				});
+
+				$('#uploadButton').on('click', function(event) {
+				event.preventDefault();
+
+				var fileInput = $('#datasetFile')[0];
+				var file = fileInput.files[0];
+
+				if (!file) {
+					M.toast({html: 'Please select a file to upload.'});
+					return;
+				}
+
+				var fileName = file.name;
+				var fileType = file.type;
+
+				var isFnaGzFile = fileName.endsWith('.fna.gz');
+				var isGzipped = file.type === 'application/gzip' || file.type === 'application/x-gzip';
+
+				// TO DO; handle other kinds of files i.e. zipped normally, not zipped etc.
+
+				if (!isFnaGzFile || !isGzipped) {
+					M.toast({html: 'Please upload a .fna file that is gzipped (.fna.gz).'});
+					return;
+				}
+
+				$("#spinner").show();
+                M.toast({html: 'File Uploading...', displayLength: 3000});
+
+				// Get the API URL from the input field
+				var API = $('#txtApiPath').val();
+				var apiUrl = API + "/customUpload";
+
+				var action_1 = "generate_presigned_url";
+
+				// Send file name and type to the API to get a pre-signed URL
+					$.ajax({
+						url: apiUrl + "?file_name=" + encodeURIComponent(fileName) + "&file_type=" + encodeURIComponent(fileType) + "&action=" + encodeURIComponent(action_1),
+						type: "GET",
+						success: function(data) {
+							var presignedUrl = data.url;
+
+							// Upload the file to S3 using the pre-signed URL
+							$.ajax({
+								url: presignedUrl,
+								type: "PUT",
+								data: file,
+								processData: false,
+								contentType: fileType,
+								success: function() {
+									$("#spinner").hide();
+									M.toast({html: 'File uploaded successfully'});
+								},
+								error: function(request, status, error) {
+									$("#spinner").hide();
+									M.toast({html: 'Upload failed: ' + error});
+								}
+							});
+						},
+						error: function(request, status, error) {
+							$("#spinner").hide();
+							M.toast({html: 'Something went wrong: ' + error});
+						}
+					});
+             	});
 			});
 		</script>
-		
-		<style>
-		.divNav { margin-bottom: 2em; }
-		.divContent {  }
-		.cracklingLogo { margin-left: 1em; }
-		.dnaSeq { font-family: Courier New; }
-		</style>
 	</head>
-	
+
 	<body>
 		<div class="nav-wrapper">
 			<nav class="nav-extended">
@@ -158,8 +280,11 @@
 					<ul class="tabs tabs-transparent">
 						<li class="tab col s3"><a href="#tabSubmit">Submit a job</a></li>
 						<li class="tab col s3"><a href="#tabResults">Retrieve results</a></li>
+						<li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li>
 						<li class="tab col s3"><a href="#tabSettings">Settings</a></li>
 						<li class="tab col s3"><a href="#tabAbout">About</a></li>
+						<!-- <li class="tab col s3"><a href="#tabUpload">Upload Custom DataSet</a></li> -->
+
 					</ul>
 					<ul id="nav-mobile" class="hide-on-med-and-down">
 						<li><a href="sass.html">Sass</a></li>
@@ -169,11 +294,9 @@
 				</div>
 			</nav>
 		</div>
-			
-		<!-- Start Material container -->
+
 		<div class="container">
 			<div class="section">
-				<!-- Start page content -->
 				<div class="divContent">
 					
 					<!-- Tab: Submit -->
@@ -221,19 +344,35 @@
 									</span>
 								</div>
 							</div>
-						</div>
+						 </div>
 					
-					
-						<form name="frmSubmitJob" id="frmSubmitJob">
+						 <form name="frmSubmitJob" id="frmSubmitJob">
 							<div class="input-field col s12">
 								<textarea id="sequence" name="sequence" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste your DNA sequence here (not FASTA formatted)">ATCGATCGATCGATCGATCGAGGATCGATCGATCGATCGATCGTGGCCAATCGATCGATCGATCGATCG</textarea>
 								<label for="sequence">Query sequence</label>
 							</div>
-							</br>
-							<div class="input-field col s12">
+
+							<p>
+								<label>
+									<input type="checkbox" id="toggleDropdown" onclick="toggleInputs()">
+									<span>Choose Custom Dataset</span>
+								</label>
+							</p>
+
+                            <div class="input-field col s12" id="genomeContainer">
 								<textarea id="genome" name="genome" class="materialize-textarea tooltipped" data-length="10000" rows="5" data-position="bottom" data-tooltip="Paste Your NCBI genome accession here">GCA_000482205.1</textarea>
 								<label for="genome">Genome Accession</label>
 							</div>
+
+							<div class="input-field col s12 hidden" id="dropdownContainer">
+								<form id="dropdownForm" action="#" method="post">
+									<label for="dropdown">Select an Option:</label><br>
+									<select id="dropdown" name="value">
+									</select>
+								</form>
+							</div>
+
+						</br>
 							<div>
 							<a href="https://www.ncbi.nlm.nih.gov/genome/browse#!/overview/">Link: NCBI genome browser</a>
 							</div>
@@ -244,8 +383,7 @@
 							</button>
 						</form>
 					</div>
-					
-					
+
 					<!-- Tab: Results -->
 					<div id="tabResults" class="col s10">
 						<form name="frmRetrieveJob" id="frmRetrieveJob">
@@ -263,7 +401,15 @@
 							</div>
 							
 							</br>
-							
+
+							<div id="statusMessage">
+								<div class="status-label">Identified <span id="numGuides"></span> candidate guides</div>
+								<div class="status-results">
+									Completed efficiency evaluation for <span id="numScoredOntarget"></span> guides<br>
+									Completed specificity evaluation for <span id="numScoredOfftarget"></span> guides
+								</div>
+							</div>
+
 							<table name="tblResults" id="tblResults" border="1" class="highlight centered">
 								<thead>
 									<tr>
@@ -279,15 +425,13 @@
 						</form>
 					</div>
 					
-					
 					<!-- Tab: Settings -->
 					<div id="tabSettings" class="col s10">
 						<div class="input-field col s6">
-							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="https://22lkohk38b.execute-api.ap-southeast-2.amazonaws.com/CracklingProductionApi" data-position="bottom">
+							<input placeholder="Placeholder" id="txtApiPath" name="txtApiPath" type="text" class="validate" value="{{API_URL}}" data-position="bottom">
 							<label for="txtApiPath">Crackling API URL</label>
 						</div>
 					</div>
-					
 					
 					<!-- Tab: About -->
 					<div id="tabAbout" class="col s10">
@@ -309,7 +453,6 @@
 										<i>See References #1</i>
 									</blockquote>
 									
-									
 									<h4>Multi-approach efficiency evaluation</h4>
 									<blockquote>
 										A large number of computational methods have been developed to assist in the identification of suitable guides. However, there is only limited overlap between the guides that each tool identifies. This can motivate further development, but also raises the question of whether it is possible to combine existing tools to improve guide design.
@@ -323,10 +466,6 @@
 										</br>
 										<i>See References #2</i>
 									</blockquote>
-									
-									<h4>FAQ's</h4>
-									<p><b>Why can I not see all consensus and ISSL results?</b></p>
-									<p>This is a known issue that we're trying to fix as quickly as possible.</p>
 								</div>
 							</li>
 							<li>
@@ -347,7 +486,7 @@
 													<a href="http://jakebradford.com.au/" target="new">Website</a>
 													<a href="https://twitter.com/jakebradfordqut" target="new">Twitter</a>
 													<a href="https://scholar.google.com.au/citations?user=AYdGndoAAAAJ&hl=en" target="new">Scholar</a>
-													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="jacob.bradford@hdr.qut (add .edu.au)">Email</a>
+													<a href="#" class="tooltipped" data-position="bottom" data-tooltip="jake.bradford AAATTT qut.edu.au">Email</a>
 												</div>
 											</div>
 										</div>
@@ -404,15 +543,80 @@
 							</li>
 						</ul>
 					</div>
-					
-				<!-- End page content -->
-				</div>
 
-			<!-- End section -->
+
+					<!-- Tab - Upload Custom Dataset-->
+					<div id="tabUpload" class="col s10">
+						<form id="uploadForm" enctype="multipart/form-data">
+							<div class="file-field input-field">
+								<div class="btn">
+									<span>File</span>
+									<input type="file" name="dataset" id="datasetFile" />
+								</div>
+								<div class="file-path-wrapper">
+									<input class="file-path validate" type="text" placeholder="Upload your dataset" />
+								</div>
+							</div>
+							<button type="submit" class="btn" id="uploadButton" name="uploadButton">Upload</button>
+						</form>
+
+						<div id="spinner">
+							<div class="loading-circle"></div>
+						</div>
+					</div>
+				</div>
 			</div>
-			
-		<!-- End Material container -->
 		</div>
 	</body>
 
+	<script>
+		
+		function toggleInputs() {
+			const isChecked = document.getElementById('toggleDropdown').checked;
+			const genomeContainer = document.getElementById('genomeContainer');
+			const dropdownContainer = document.getElementById('dropdownContainer');
+
+			if (isChecked) {
+
+				var API = $('#txtApiPath').val();
+				var apiUrl = API + "/customUpload";
+				var action_2 = "list_data"
+
+				$.ajax({
+					url: apiUrl + "?action=" + encodeURIComponent(action_2),
+					type: "GET",
+					success: function(data) {
+						var object_keys = data.object_keys;
+
+						var dropdown = $('#dropdown');
+
+						dropdown.empty();
+
+						$.each(object_keys, function(index, key) {
+								dropdown.append('<option value="' + key + '">' + key + '</option>');
+						});
+
+						M.FormSelect.init(dropdown);
+
+					}, 
+					error: function(xhr, status, error) {
+						console.error('Error fetching S3 object keys:', error);
+					}
+
+				});
+
+				dropdownContainer.classList.remove('hidden');
+				genomeContainer.classList.add('hidden');
+
+			} else {
+				dropdownContainer.classList.add('hidden');
+				genomeContainer.classList.remove('hidden');
+			}
+		}
+
+		document.addEventListener('DOMContentLoaded', () => {
+			toggleInputs();
+			M.AutoInit();
+		});
+	</script>
 </html>

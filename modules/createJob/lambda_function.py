@@ -1,20 +1,20 @@
-import boto3, json, uuid, os, time, datetime
+import boto3, json, uuid, os
+
+from time import time
+from datetime import datetime
+from common_funcs import *
 
 MAX_SEQ_LENGTH = os.getenv('MAX_SEQ_LENGTH', 10000)
 JOBS_TABLE = os.getenv('JOBS_TABLE', 'jobs')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(JOBS_TABLE)
+jobTable = dynamodb.Table(JOBS_TABLE)
+taskTrackingTable = dynamodb.Table(TASK_TRACKING_TABLE)
 
 headers = {
     'Access-Control-Allow-Headers'  : 'Content-Type',
     'Access-Control-Allow-Origin'   : '*'
-}
-
-GENOMES_MAP = {
-    'SARS_COV_2' : 'SARS-COV-2_NC_045512-2.issl'
-    #'1' : 'Test100000_E_coli_offTargets_20.fa.sorted.issl',
-    #'2' : 'Test200000_E_coli_offTargets_20.fa.sorted.issl',
 }
 
 def return_http_json(code, message, tags = []):
@@ -24,15 +24,14 @@ def return_http_json(code, message, tags = []):
     body = json.dumps(payload)
     return {'statusCode': code, 'headers': headers, 'body': body}
 
-
 def lambda_handler(event, context):
     if event['body']:
         try:
             job_request = json.loads(event['body'])
         except:
-            return return_http_json('Error parsing request body. Is it properly formatted JSON?')
+            return return_http_json('Error parsing request body. Is it properly formatted JSON?',400)
     else:
-        return return_http_json('No body sent with request')
+        return return_http_json('No body sent with request',400)
 
     if 'sequence' in job_request:
         sequence = job_request['sequence'].replace('\r\n', '').replace('\r', '').replace('\n', '').replace(' ', '')
@@ -41,34 +40,38 @@ def lambda_handler(event, context):
         elif len(sequence) > int(MAX_SEQ_LENGTH):
             return return_http_json(400, f'The specified sequence is too long (max length = {MAX_SEQ_LENGTH})', ['sequence'])
 
-    # if 'genome' in job_request:
-    #     if job_request['genome'] in GENOMES_MAP:
-    #         genome = GENOMES_MAP[job_request['genome']]
-    #     else:
-    #         return return_http_json(400, 'Invalid genome selected')
-    # else:
-    #     return return_http_json(400, 'No genome selected')
     genome = job_request['genome']
 
     jobid = str(uuid.uuid4())
-    #jobid = str(int(time.time()))
 
-    table.put_item(
+    # add to jobs table
+    jobTable.put_item(
         Item={
             'JobID' : jobid,
             'Sequence' : sequence,
-            'DateTime' : int(time.time()),
-            'DateTimeHuman' : str(datetime.datetime.now()),
+            'DateTime' : int(time()),
+            'DateTimeHuman' : str(datetime.now()),
             'Genome' : genome
+        }
+    )
+
+    # add to task tracking table
+    taskTrackingTable.put_item(
+        Item={
+            'JobID' : jobid,
+            'NumGuides' : 0,
+            'NumScoredOfftarget' : 0,
+            'NumScoredOntarget': 0,
+            'Version' : 0 # used to avoid race conditions. not to be facing the end-user
         }
     )
     
     body = json.dumps({
         'aws_request_id' : context.aws_request_id,
-        'JobID' : jobid,
-        'Genome' : genome # for debug
+        'JobID' : jobid
     })
 
+    
     return {
         "statusCode": 200,
         "headers": headers,

@@ -6,6 +6,8 @@ from boto3.dynamodb.conditions import Key
 from common_funcs import *
 
 TARGETS_TABLE = os.getenv('TARGETS_TABLE')
+JOBS_TABLE = os.getenv('JOBS_TABLE')
+TASK_TRACKING_TABLE = os.getenv('TASK_TRACKING_TABLE')
 CONSENSUS_SQS = os.getenv('CONSENSUS_QUEUE')
 ISSL_SQS = os.getenv('ISSL_QUEUE')
 
@@ -18,13 +20,6 @@ complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHD
 def rc(dna):
     rcseq = dna.translate(complements)[::-1]
     return rcseq
-    
-#Loads a FASTA file and creates a string <candidate_seq> from the sequence.
-trans = str.maketrans('', '', '1234567890 \n')
-def clean_candidate_sequence(rawsequence):
-    sequence = str(rawsequence)
-    return sequence.translate(trans).upper()
-
 
 def create_target_entry(params, index, target):
     return {
@@ -63,7 +58,9 @@ def target_iterator(seq):
                     'start'     : m.start(),
                     'end'       : m.start() + 23,
                     'seq'       : target23,
-                    'strand'    : strand
+                    'strand'    : strand,
+                    'IsslScore' : None,
+                    'Consensus' : None
                 } 
     
     for possibleTarget in possibleTargets:
@@ -74,6 +71,8 @@ def target_iterator(seq):
 
 # Find target sites and add to dictionary, 'candidateTargets'.
 def find_targets(params):
+    num_targets = 0
+
     with table.batch_writer() as batch:
         for index, target in enumerate(target_iterator(params['Sequence'])):
             targetEntry = create_target_entry(params, index, target)
@@ -83,7 +82,8 @@ def find_targets(params):
             for targetQueue in [ISSL_SQS, CONSENSUS_SQS]:
                 msg = json.dumps(
                     {
-                        'default': json.dumps(targetEntry)
+                        'default': json.dumps(targetEntry),
+                        'genome': json.dumps(params['Genome'])
                     }
                 )
             
@@ -91,14 +91,10 @@ def find_targets(params):
                     QueueUrl=targetQueue,
                     MessageBody=msg,
                 )
-                
-                #print(
-                #    index, 
-                #    target,
-                #    targetQueue, 
-                #    response['ResponseMetadata']['HTTPStatusCode'], 
-                #    msg
-                #)
+
+            num_targets += 1
+
+    return num_targets
 
 
 def deleteCandidateTargets(jobid):
@@ -110,7 +106,6 @@ def deleteCandidateTargets(jobid):
     
     with table.batch_writer() as batch:
         for i in range(0, target_count):
-            #print(f"Deleting: ", {'JobID': jobid, 'TargetID': index})
             batch.delete_item(Key={'JobID': jobid, 'TargetID': index})
             index += 1
 
@@ -119,27 +114,16 @@ def lambda_handler(event, context):
     # As this Lambda function is triggered by DynamoDB, we need to handle two
     # events: insertions and deletions.
     # See: https://docs.aws.amazon.com/lambda/latest/dg/with-ddb.html
-    #required = {'JobID': 'S', 'Genome': 'S', 'Chromosome': 'S', 'Location': 'N', 'Sequence': 'S'}
-    # required = {'JobID': 'S', 'Sequence': 'S'}
 
-    # inserted = [r['dynamodb']['NewImage'] for r in event['Records'] if r['eventName'] == 'INSERT']
-    # for i in inserted:
-    #     try:
-    #         jobid = i['JobID']['S']
-    #         params = {p: i[p][required[p]] for p in required}
-    #         params['Sequence'] = clean_candidate_sequence(params['Sequence'])
-    #     except:
-    #         return 'Entry contains invalid information'
-
-
-    params,body = recv(event)
-    find_targets(params)
-        #print('Processed INSERT event for {}.'.format(jobid))
-        
-    # removed = [r['dynamodb']['OldImage'] for r in event['Records'] if r['eventName'] == 'REMOVE']
-    # for r in removed:
-    #     jobid = r['JobID']['S']
-    #     deleteCandidateTargets(jobid)
-        #print('Processed REMOVE event for {}.'.format(jobid))
+    params, body = recv(event)
     
-    return None #'Completed {} tasks.'.format(len(inserted) + len(removed))
+    accession = params['Genome']
+    sequence = params['Sequence']
+    jobId = params['JobID']
+    
+    num_targets = find_targets(params) 
+
+    # set the total number of tasks the job needs to complete
+    job = set_task_total(dynamodb, TASK_TRACKING_TABLE, jobId, num_targets)
+
+    return None

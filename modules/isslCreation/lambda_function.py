@@ -1,4 +1,6 @@
 import sys, os, shutil, boto3
+import zipfile, gzip
+import tempfile
 
 from threading import Thread
 from botocore.exceptions import ClientError, ParamValidationError
@@ -15,106 +17,152 @@ except:
 
 # Global variables
 s3_bucket = os.environ['BUCKET']
-ec2 = False
-tmp_Dir = ""
-starttime = time_ns()
+TARGET_SCAN_QUEUE = os.environ['QUEUE']
+#byte - megabyte magnitude
+BYTE_TO_MB_DIVIDER = 1048576
+#max fasta file size
+CUT_OFF_MB = 650
     
 # Create S3 client
 s3_client = boto3.client('s3')
+s3_resource = boto3.resource('s3')
+
+#determine if fasta file exists and return its size
+def fasta_size_check(accession):
+    #filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/')) ## see if function is used elsewhere 
+    filesize = s3_fna_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
+    if(filesize < 1):
+        print(s3_client)
+        print(s3_bucket)
+        print("This is the filesize")
+        print(filesize)
+        sys.exit("Error - Accession file is missing.")
+    filesize_in_MB = filesize/BYTE_TO_MB_DIVIDER
+
+    # notImplemented -  (requires Carl's issl split implemention of CracklingPlusPlus)
+    # Details - the memory bottleneck is reached at CUT_OFF_MB (600-650) due to file being written on memory.
+    # It takes 10 minutes to construct at the CUT_OFF_MB fasta size and lambda has a limit of 15 minutes.
+    print(filesize_in_MB)
+    if (filesize_in_MB > CUT_OFF_MB):
+        sys.exit("Error - Accession file is larger than function can handle (memory bottleneck) - 24/09/2023")
+    return filesize_in_MB
+
+
+
+# Downloads and unzips multiple fasta files from S3 bucket 
+def s3_multi_file_to_tmp(s3_client, s3_bucket, accession):
+
+    prefix = f"{accession}/fasta/"
+    paginator = s3_client.get_paginator('list_objects_v2')
+    response_iterator = paginator.paginate(Bucket=s3_bucket, Prefix=prefix)
+
+    downloaded_files = []
+
+    # Extract all .fna file names for genome accession 
+    for page in response_iterator:
+        files = [obj['Key'] for obj in page.get('Contents', [])]
+
+        for s3_file_path in files:
+            file_name = os.path.basename(s3_file_path)
+            print(file_name)
+            downloaded_files.append(file_name)
+
+    # Temp folder for zipped files 
+    tmp_dir = get_tmp_dir()
+    # Temp folder for unzipped files 
+    tmp_extract_dir = get_tmp_dir()
+    # unzipped .fna file names 
+    extracted_files = []
+
+    for file in downloaded_files:
+
+        fasta_file_name = file
+        s3_full_filepath = f"{accession}/fasta/{fasta_file_name}"
+        print(f"This is the fasta file name {fasta_file_name}")
+
+        # Use temp directory for file writing in local
+        tmp_gz_file = os.path.join(tmp_dir, fasta_file_name)
+         
+        # download each .fna file from S3
+        print(f"Downloading {s3_full_filepath} to {tmp_gz_file}")
+        s3_client.download_file(s3_bucket, s3_full_filepath, tmp_gz_file)
+
+        # Unzip the downloaded .gz file
+        tmp_extract_file = os.path.join(tmp_extract_dir, os.path.splitext(fasta_file_name)[0])  # Remove .gz extension
+        with gzip.open(tmp_gz_file, 'rb') as f_in:
+            with open(tmp_extract_file, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        extracted_files.append(tmp_extract_file)
+
+        os.remove(tmp_gz_file)
+        print(f"Deleted temporary gz file: {tmp_gz_file}")
+
+    # print extracted files 
+    print(extracted_files)
+    return extracted_files, tmp_extract_dir
+
+
 
 # Build isslIndex
-def isslcreate(accession, chr_fns, tmp_fasta_dir):
+def isslcreate(accession, tmp_fasta_dir):
+    
     print("\nExtracting Offtargets...")
 
     # extract offtarget command
-    tmp_dir = get_tmp_dir(ec2)
+    tmp_dir = get_tmp_dir()
     offtargetfn = os.path.join(tmp_dir,f"{accession}.offtargets")
     print(f"Creating: {offtargetfn}")
-    # Convert csv string to ssv
-    files = chr_fns.split(',')
 
-    # Extract offtargets
-    print("Extracting off target sequences...",end='')
-    time_1 = time()
-    try:
-        # Lambda code
-        extractOfftargets.startSequentalprocessing(files,offtargetfn,1,100)
-        isslBin = "/opt/ISSL/isslCreateIndex"
-    except:
-        # ec2 code
-        import multiprocessing
-        mpPool = multiprocessing.Pool(os.cpu_count())
-        extractOfftargets.startMultiprocessing(files,offtargetfn,mpPool,os.cpu_count(),400)
-        isslBin = "/ec2Code/isslCreateIndex"
-    time_2 = time()
+    # Lambda code
+    extractOfftargets.startSequentalprocessing([tmp_fasta_dir], offtargetfn, 1, 100)
+    isslBin = "/opt/ISSL/isslCreateIndex"
 
-    print(f"Done. Time to extract offtargets: {(time_2-time_1)}.",
-    '\n\nRunning: createIsslIndex... ')
+    issl_path = os.path.join(tmp_dir, f"{accession}.issl")
 
-    # Run isslcreation
-    issl_path = os.path.join(tmp_dir,f"{accession}.issl")
-    
-    time_1 = time()
     os.system(f"{isslBin} {offtargetfn} 20 8 {issl_path}")
-    time_2 = time()
-    print(f"\n\nTime to create issl index: {(time_2-time_1)}.\n")
 
-    # Upload issl and offtarget files to s3
-    upload_dir_to_s3(s3_client,s3_bucket,tmp_dir,f'{accession}/issl')
+    s3_destination_path = f"{accession}/issl"
+    upload_dir_to_s3(s3_client, s3_bucket, tmp_dir, s3_destination_path)
+
 
 def lambda_handler(event, context):
+
     args,body = recv(event)
     accession = args['Genome']
+    sequence = args['Sequence']
+    jobid = args['JobID']
+
+    body ={ 
+        "Genome": accession, 
+        "Sequence": sequence, 
+        "JobID": jobid
+    }
+    json_object = json.dumps(body)
 
     if accession == 'fail':
         sys.exit('Error: No accession found.')
+
+    print(f"accession: {accession}")
     
-    # get file size of accession from s3 before download 
-    filesize = s3_fasta_dir_size(s3_client,s3_bucket,os.path.join(accession,'fasta/'))
-    # Check files exist
-    if(filesize < 1) and not ec2:
-        sys.exit("Accession file/s are missing.")
+    #check that file size meets current limitations - 600MB file
+    _ = fasta_size_check(accession)
 
-    csv_fn = 'issl_times.csv'
-    lock_key = 'issl_lock'
-
-    # Create new thread for time to monitor debug limit
-    thread1 = Thread(target=thread_task, args=(accession,context,filesize,s3_client,s3_bucket,csv_fn,lock_key))
-    thread1.daemon = True
-    thread1.start()
-
-    # download from s3 based on accession
-    if not ec2:
-        tmp_dir, chr_fns = s3_files_to_tmp(s3_client,s3_bucket,accession)
-    else:
-        tmp_dir, chr_fns = list_tmp(tmp_Dir)
+    tmp_dir_fasta, tmp_dir = s3_multi_file_to_tmp(s3_client, s3_bucket, accession)
 
     # Create issl files
-    isslcreate(accession, chr_fns, tmp_dir)
+    isslcreate(accession, tmp_dir)
 
-    # Successful exec of bowtie, write success to s3
-    s3_success(s3_client,s3_bucket,accession,"issl",body)
+    sqs_send_message(TARGET_SCAN_QUEUE, json_object) 
 
-    # Add run to s3 csv for logging
-    s3_csv_append(s3_client,s3_bucket,accession,filesize,(time_ns()-starttime)*1e-9,csv_fn,lock_key)
-
+    print("These are the extracted file names", tmp_dir_fasta)
+    
     #close temp fasta file directory
-    if not ec2 and os.path.exists(tmp_dir):
+    if os.path.exists(tmp_dir):
         print("Cleaning Up...")
         shutil.rmtree(tmp_dir)
 
     print("All Done... Terminating Program.")
 
-# ec2 instance code entry and setup function
-def ec2_start(s3_Client,tmp_dir, event, context):
-    global s3_client
-    s3_client = s3_Client
-    global ec2
-    ec2 = True
-    global tmp_Dir
-    tmp_Dir = tmp_dir
-    return lambda_handler(event, context)
-
 if __name__== "__main__":
-    event, context = main()
+    event, context = local_lambda_invocation()
     lambda_handler(event, context)
