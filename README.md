@@ -39,6 +39,63 @@ Please cite our paper when using Crackling:
 
 The standalone implementation is available on GitHub, [here](https://github.com/bmds-lab/Crackling).
 
+# Usage
+
+1. If you do not have an AWS account, follow [this](https://aws.amazon.com/resources/create-account/) AWS user guide
+
+2. Clone this repository, or download a Zip copy from GitHub.
+
+3. Follow the deployment instructions below.
+
+4. Access your deployment of Crackling Cloud using the generated URLs:
+
+    - The CloudFront URL provides you access to a simple web interface to submit jobs and retrieve results.
+
+    - The API endpoint URL provides you access to same features of the web interface but allows you to write custom scripts or use third-party tools to interface with your deployment of Crackling Cloud.
+
+   For example,
+
+   ```
+    CloudfrontURL: d123q1z2zzz999.cloudfront.net
+	
+    CracklingRestApiEndpoint: https://e123456789.execute-api.ap-southeast-2.amazonaws.com/prod/
+   ```
+
+5. Access the web interface using the CloudFront URL.
+
+6. Submit a job with these details (provided as defaults):
+
+    **Query sequence:**
+
+   ```
+   ATCGATCGATCGATCGATCGAGGATCGATCGATCGATCGATCGTGGCCAATCGATCGATCGATCGATCG
+   ```
+
+   **Genome Accession:**
+
+   ```
+   GCA_000482205.1
+   ```
+
+7. After submitting the job, the interface will automatically switch to the 'retrieve results' tab. Click on the green 'Retrieve Results' button, progressively, until all results are ready. The status indicator will how analysis is progressing:
+
+
+    ```
+    Identified 3 candidate guides
+    Completed efficiency evaluation for 0 guides
+    Completed specificity evaluation for 0 guides
+    ```
+
+    The sample inputs will generate three guide RNA. 
+
+    - Start, end and strand describe where the guide RNA are found along the input gene sequence.
+
+    - The guide RNA itself is the sequence
+
+    - Consensus results reflects the predictive efficiency of the guide RNA. See the 'About' tab for more information. You should use guides that have scored at least two out of three.
+
+    - Off-target score reflects the predicted specificity of the guide RNA. See the 'About' tab for more information. You should use guides that have scored at least 75 out of 100. 
+    
 # Architecture
 
 ![Architecture diagram](CracklingAws.drawio.png)
