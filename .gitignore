@@ -5,11 +5,12 @@ modules/consensus/package/*
 layers/sharedObjects
 *.venv
 *.zip
+.env
 cdk.out
-aws/aws/dist/
-aws/aws/install
-aws/aws/README.md
-aws/aws/THIRD_PARTY_LICENSES
+aws/dist/
+aws/install
+aws/README.md
+aws/THIRD_PARTY_LICENSES
 layers/ncbi/*
 =10.0.0,
 tests/*
