@@ -16,63 +16,82 @@ To use:     python3.7 ExtractOfftargets.py output-file  (input-files... | input-
 ''' 
 import glob, os, re, shutil, sys, tempfile, heapq, argparse
 
+SEQ_LEN = 20
+BYTES_PER_SEQ = (SEQ_LEN * 2 + 7) // 8
+
 # Defining the patterns used to detect sequences
 pattern_forward_offsite = r"(?=([ACG][ACGT]{19}[ACGT][AG]G))"
 pattern_reverse_offsite = r"(?=(C[CT][ACGT][ACGT]{19}[TGC]))"
+
+nucleotideIndex = {
+    'A': 0,
+    'C': 1,
+    'G': 2,
+    'T': 3
+}
 
 # Function that returns the reverse-complement of a given sequence
 def rc(dna):
     complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
     rcseq = dna.translate(complements)[::-1]
     return rcseq
+
+def encode_sequence(seq: str) -> bytes:
+    value = 0
+    for base in seq:
+        value = (value << 2) | nucleotideIndex[base]
+    num_bytes = (len(seq) * 2 + 7) // 8
+    return value.to_bytes(num_bytes, byteorder="big")
+
+def record_reader(fp):
+    while True:
+        chunk = fp.read(BYTES_PER_SEQ)
+        if not chunk:
+            break
+        yield (int.from_bytes(chunk, "big"), chunk)
     
-def explodeMultiFastaFile(fpInput, fpOutputTempDir):
+def explodeMultiFastaFile(fpInput, fpOutputTempDir, Invocation, totalInvocations):
     newFilesPaths = []
+    currentHeaderIndex = 0
+    workerID = Invocation - 1
+    fWrite = None
 
     with open(fpInput, 'r') as fRead:
-        fWrite = None
-
         for line in fRead:
             line = line.strip()
-            
-            # just found a new fasta segment. open a new file
-            if line[0] == '>':
-                fpTemp = tempfile.NamedTemporaryFile(
-                    mode = 'w+', 
-                    delete = False,
-                    dir = fpOutputTempDir
-                )
-                
-                # close the current file if necessary
+            if line.startswith('>'):
+                # Close previous file if open
                 if fWrite is not None:
-                    fWrite.write('\n')
                     fWrite.close()
-                    
-                # open a new one
-                fWrite = open(fpTemp.name, 'w+')
-                newFilesPaths.append(fpTemp.name)
-                
-                fWrite.write(line)
-                fWrite.write('\n')
+                    fWrite = None
 
-            if line[0] != '>':
-                fWrite.write(line.upper().strip())
-        
-        # close the last file if necessary
-        if fWrite is not None:
-            fWrite.close()
-            
+                # Check if this header belongs to this invocation
+                if currentHeaderIndex % totalInvocations == workerID:
+                    # Create new temp file
+                    fpTemp = tempfile.NamedTemporaryFile(mode='w+', delete=False, dir=fpOutputTempDir)
+                    fWrite = fpTemp
+                    newFilesPaths.append(fpTemp.name)
+                    fWrite.write(line + '\n')
+
+                currentHeaderIndex += 1
+            else:
+                if fWrite is not None:
+                    fWrite.write(line.upper() + '\n')
+
+    if fWrite is not None:
+        fWrite.close()
+
     return newFilesPaths
 
 def processingNode(fpInput, fpOutputTempDir = None):
     # Create a temporary file
     fpTemp = tempfile.NamedTemporaryFile(
-        mode = 'w+', 
+        mode = 'wb+', 
         delete = False,
         dir = fpOutputTempDir
     )
 
-    with open(fpTemp.name, 'w+') as outFile:
+    with open(fpTemp.name, 'wb') as outFile:
         # key: FASTA header, value: sequence
         seqsByHeader = {}
 
@@ -90,7 +109,7 @@ def processingNode(fpInput, fpOutputTempDir = None):
                     seqsByHeader[header].append(line.rstrip().upper())
 
         # For each FASTA sequence
-        offtargets = [] 
+        offTargetCount = 0
         for header in seqsByHeader:
             seq = ''.join(seqsByHeader[header])
             
@@ -101,31 +120,36 @@ def processingNode(fpInput, fpOutputTempDir = None):
                 match_chr = re.findall(pattern, seq)
 
                 for i in range(0,len(match_chr)):
-                    offtargets.append(
-                        seqModifier(match_chr[i][0:20])
-                    )
-                
-            outFile.write(''.join(f'{offTarget}\n' for offTarget in offtargets))
-            return len(offtargets)
+                    offTarget = seqModifier(match_chr[i][0:20])
+                    outFile.write(encode_sequence(offTarget))
+                    offTargetCount += 1       
+        return offTargetCount
 
 # Node function that sorts a file for multiprocessing pool
 def sortingNode(fileToSort, sortedTempDir):
     # Create a temporary file
     sortedFile = tempfile.NamedTemporaryFile(
-        mode = 'w+', 
+        mode = 'wb', 
         delete = False,
         dir = sortedTempDir
     )
     # Sort input file and store in new output dir
-    with open(fileToSort, 'r') as input:
-        # Read 'page'
-        page = input.readlines()
-        # Sort Page
-        page.sort()
-        # Write sorted page to file
-        sortedFile.writelines(page)
-        # Close sorted file
-        sortedFile.close()
+    with open(fileToSort, 'rb') as input:
+        # Read entire file as fixed-length records
+        data = []
+        while True:
+            chunk = input.read(BYTES_PER_SEQ)
+            if not chunk:
+                break
+            data.append(chunk)
+        
+    # Sort by raw binary value
+    data.sort(key=lambda record: int.from_bytes(record, "big"))
+    # Write sorted page to file
+    for record in data:
+        sortedFile.write(record)
+    # Close sorted file
+    sortedFile.close()
 
 def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400): 
     # Create temp file directory
@@ -149,12 +173,12 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
     print(f'Beginning to merge sorted files, {maxNumOpenFiles:,} at a time')
     while len(sortedFiles) > 1:
         # A file to write the merged sequences to
-        mergedFile = tempfile.NamedTemporaryFile(delete = False)
+        mergedFile = tempfile.NamedTemporaryFile(mode='wb', delete = False)
         
         # Select the files to merge
         while True:
             try:
-                sortedFilesPointers = [open(file, 'r') for file in sortedFiles[:maxNumOpenFiles]]
+                sortedFilesPointers = [open(file, 'rb') for file in sortedFiles[:maxNumOpenFiles]]
                 break
             except OSError as e:
                 if e.errno == 24:
@@ -174,8 +198,9 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
         print(f'Merging {len(sortedFilesPointers):,}')
         
         # Merge and write
-        with open(mergedFile.name, 'w') as f:
-            f.writelines(heapq.merge(*sortedFilesPointers))
+        merged_iter = heapq.merge(*(record_reader(file) for file in sortedFilesPointers))
+        for _, record in merged_iter:
+            mergedFile.write(record)
         
         # Close all of the open files
         for file in sortedFilesPointers:
@@ -186,7 +211,7 @@ def paginatedSort(filesToSort, fpOutput, maxNumOpenFiles=400):
     
     shutil.move(sortedFiles[0], fpOutput)
 
-def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
+def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles, context, Invocation, totalInvocations):
     print('Extracting off-targets using sequental-processing approach')
     
     print(f'Allowed processes: {numThreads}')
@@ -212,10 +237,14 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
     
         fpInputs = explodeMultiFastaFile(
             fpInputs[0],
-            fpExplodeTempDir.name
+            fpExplodeTempDir.name,
+            Invocation, 
+            totalInvocations
         )
         
         print(f'Exploded into {len(fpInputs)} files')
+
+    print(f'Current run-time = {900000 - context.get_remaining_time_in_millis()}ms')
 
     print(f'Beginning to process {len(fpInputs)} files')
 
@@ -227,6 +256,8 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
     )
 
     print(f'Processing completed. Found {sum(numTargets):,} targets.')
+
+    print(f'Current run-time = {900000 - context.get_remaining_time_in_millis()}ms')
     
     print('Preparing for ISSL by sorting all intermediate files')
     
@@ -241,6 +272,9 @@ def startSequentalprocessing(fpInputs, fpOutput, numThreads, maxOpenFiles):
         fpOutput,
         maxNumOpenFiles=maxOpenFiles
     )
+
+    print(f'Current run-time = {900000 - context.get_remaining_time_in_millis()}ms')
+
     print("end reached. Goodbye")
 
 def main():

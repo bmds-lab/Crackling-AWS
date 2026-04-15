@@ -11,7 +11,7 @@ from common_funcs import *
 try:
     import ncbi.datasets
 except ImportError:
-    print('ncbi.datasets module not found. Be sure that the packages are imported as a Lambda Layer.')
+    print('ncbi.datasets module not found. Be sure that the packages are imported as a Lambda Layer. To install, run `pip install ncbi-datasets-pylib`.')
 
 # Global variables
 S3_BUCKET = os.environ['BUCKET']

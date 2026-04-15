@@ -9,6 +9,7 @@ The standalone edition of the Crackling pipeline is available at https://github.
 
 """
 import aws_cdk as cdk
+import json
 
 from aws_cdk import (
     Duration,
@@ -26,9 +27,11 @@ from aws_cdk import (
     aws_cloudfront as cloudfront_,
     aws_cloudfront_origins as origins_,
     custom_resources as cr,
-    Aws,
+    Aws,   
     DefaultStackSynthesizer
 )     
+
+from constructs import Construct
 
 account_number = Aws.ACCOUNT_ID
 availabilityZone = Aws.REGION
@@ -36,14 +39,17 @@ availabilityZone = Aws.REGION
 class CracklingStack(Stack):
     def __init__(self, scope, id, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
-
+        
+        # Optional: Tag AWS resources with commit hash
         commit_hash = self.node.try_get_context("gitCommit")
         if commit_hash:
             cdk.Tags.of(self).add("GitCommit", commit_hash[:8])
 
         ### Virtual Private Cloud
         # VPCs are used for constraining infrastructure to a private network.
-        cracklingVpc = ec2_.Vpc(self, "CracklingVpc",
+        cracklingVpc = ec2_.Vpc(
+            scope=self,
+            id="CracklingVPC",
             gateway_endpoints={
                 "s3" : ec2_.GatewayVpcEndpointOptions(
                     service=ec2_.GatewayVpcEndpointAwsService.S3
@@ -52,17 +58,18 @@ class CracklingStack(Stack):
                     service=ec2_.GatewayVpcEndpointAwsService.DYNAMODB
                 )
             },
-          
+            
             # A Network Address Translator routes outbound traffic to the internet when necessary.
             # Force the VPC to have no internet access. 
             # The Lambda functions that interact with NCBI are placed *outside* of this VPC (e.g., `lambdaGenomePartsDownloader`).
-            # Those functions have tight IAM policies, as does the bucket they write to.
+            # A Network Address Translator routes outbound traffic to the internet when necessary
             nat_gateways=0,
         )
 
-        ### Simple Storage Service (S3) is a object store that can also host websites.
+        ### Simple Storage Service (S3) is a object store that can host websites.
         # This bucket is used for hosting the front-end application.
-        s3Frontend = s3_.Bucket(self, "CracklingWebsite",
+        s3Frontend = s3_.Bucket(self,
+            "CracklingWebsite",
             website_index_document="index.html",
             public_read_access=True,
             removal_policy=RemovalPolicy.DESTROY,
@@ -81,7 +88,8 @@ class CracklingStack(Stack):
         cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
 
         ### Create an S3 bucket to store genome data
-        s3Genome = s3_.Bucket(self, "genomeStorage", 
+        s3Genome = s3_.Bucket(self,
+            "genomeStorage", 
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             cors=[s3_.CorsRule(
@@ -147,6 +155,14 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
+        # ddb stores completed ExtractOfftargets invocations
+        ddbOfftargets = ddb_.Table(self, "ddbOfftargets",
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
+            partition_key=ddb_.Attribute(name="JobID", type=ddb_.AttributeType.STRING),
+            stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
+        )
+
         ### Stores information on the number of tasks completed by each job
         ddbTaskTracking = ddb_.Table(self, "ddbTaskTracking",
             removal_policy=RemovalPolicy.DESTROY,
@@ -176,23 +192,15 @@ class CracklingStack(Stack):
 
         ### Lambda is an event-driven compute service.
         # Some lambda functions may need additional resources - these are provided via layers.
-
-
-        ### Layer containing the python script and binary required for building issl indices
-        lambdaLayerIsslScorerCreation = lambda_.LayerVersion(self, "lambdaLayerIsslScorerCreation",
-            code=lambda_.Code.from_asset("../layers/isslCreation"),
-            removal_policy=RemovalPolicy.DESTROY
-        )
-
-        ### This layer provides the ISSL scoring binary.
-        lambdaLayerIsslScorer = lambda_.LayerVersion(self, "lambdaLayerIsslScorer",
+        # This layer provides the ISSL scoring binary.
+        lambdaLayerIssl = lambda_.LayerVersion(self, "isslBinary",
             code=lambda_.Code.from_asset("../layers/isslScoreOfftargets"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
-        ### Lambda layer containing python3.10 packages for requests
-        lambdaLayerRequests = lambda_.LayerVersion(self, "lambdaLayerRequests",
+        ### Lambda layer containing python3.10 packages for rques
+        lambdaLayerRequests = lambda_.LayerVersion(self, "requests",
             code=lambda_.Code.from_asset("../layers/requestsPy310Pkgs"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64],
@@ -202,7 +210,7 @@ class CracklingStack(Stack):
         )
 
         ### Lambda layer containing the sgRNAScorer 2.0 model
-        lambdaLayerSgrnascorerModel = lambda_.LayerVersion(self, "lambdaLayerSgrnascorerModel",
+        lambdaLayerSgrnascorerModel = lambda_.LayerVersion(self, "sgrnascorer2Model",
             code=lambda_.Code.from_asset("../layers/sgrnascorer2Model"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64],
@@ -212,28 +220,34 @@ class CracklingStack(Stack):
         )
 
         ### Lambda layer containing the RNAfold binary
-        lambdaLayerRnafold = lambda_.LayerVersion(self, "lambdaLayerRnafold",
+        lambdaLayerRnafold = lambda_.LayerVersion(self, "rnafold",
             code=lambda_.Code.from_asset("../layers/rnaFold"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
 
         ### Lambda layer containing shared libraries for compiled binaries
-        lambdaLayerLib = lambda_.LayerVersion(self, "lambdaLayerLib",
+        lambdaLayerLib = lambda_.LayerVersion(self, "lib",
             code=lambda_.Code.from_asset("../layers/lib"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
       
         ### This layer contains a python module of commonly used functions across the lambdas
-        lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "lambdaLayerCommonFuncs",
+        lambdaLayerCommonFuncs = lambda_.LayerVersion(self, "commonFuncs",
             code=lambda_.Code.from_asset("../layers/commonFuncs"),
             removal_policy=RemovalPolicy.DESTROY
         )
 
         ### Layer containing ncbi.datasets module and dependencies
-        lambdaLayerNcbi = lambda_.LayerVersion(self, "lambdaLayerNcbi",
+        lambdaLayerNcbi = lambda_.LayerVersion(self, "ncbi",
             code=lambda_.Code.from_asset("../layers/ncbi"),
+            removal_policy=RemovalPolicy.DESTROY
+        )
+
+        ### Layer containing the python script and binary required for building issl indices
+        lambdaLayerIsslCreation = lambda_.LayerVersion(self, "isslCreationLayer",
+            code=lambda_.Code.from_asset("../layers/isslCreation"),
             removal_policy=RemovalPolicy.DESTROY
         )
         
@@ -243,8 +257,46 @@ class CracklingStack(Stack):
         duration = Duration.minutes(15)
 
         # Simple Queue Service is a queueing service that enables distributed systems to operate at scale.
-        # This queue handles creating ISSL indexes
-        sqsIsslCreation = sqs_.Queue(self, "sqsIsslCreation", 
+        # This queue calls ExtractOfftarget scheduler
+        sqsDetermineConcurrentExtractions = sqs_.Queue(
+            self,
+            "sqsDetermineConcurrentExtractions", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+        
+        # This queue calls concurrent ExtractOfftarget Lambdas
+        sqsExtractOfftargets = sqs_.Queue(
+            self,
+            "sqsExtractOfftargets", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+
+        # This queue calls OfftargetsMerger after all concurrent functions are complete
+        sqsOfftargetsMerger = sqs_.Queue(
+            self,
+            "sqsOfftargetsMerger", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+
+        # This queue handles creating ISSL indexes during first phase
+        sqsIsslCreation = sqs_.Queue(
+            self,
+            "sqsIsslCreation", 
+            receive_message_wait_time=Duration.seconds(1),
+            visibility_timeout=duration,
+            retention_period=duration
+        )
+
+        # This queue handles creating ISSL indexes during second phase
+        sqsIsslReinvoke = sqs_.Queue(
+            self,
+            "sqsIsslReinvoke", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
@@ -252,7 +304,8 @@ class CracklingStack(Stack):
 
         ### An SQS Deal Letter queue handles messages that have "died" in another queue.
         # This is a dead letter queue for the queue that implements the genome portion/part downloader
-        sqsGenomePartsDlq = sqs_.Queue(self, "sqsGenomePartsDlq",
+        sqsGenomePartsDlq = sqs_.Queue(
+            self, "sqsGenomePartsDlq",
             retention_period=Duration.days(14)
         )
 
@@ -269,7 +322,9 @@ class CracklingStack(Stack):
 
         ### SQS queue for identifying candidate guides
         # i.e., extracting on-target sites
-        sqsTargetScan = sqs_.Queue(self, "sqsTargetScan", 
+        sqsTargetScan = sqs_.Queue(
+            self,
+            "sqsTargetScan", 
             receive_message_wait_time=Duration.seconds(1),
             visibility_timeout=duration,
             retention_period=duration
@@ -285,7 +340,9 @@ class CracklingStack(Stack):
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
         # The consensus lambda function processes items in this queue
-        sqsConsensus = sqs_.Queue(self, "sqsConsensus", 
+        sqsConsensus = sqs_.Queue(
+            self,
+            "sqsConsensus", 
             receive_message_wait_time=Duration.seconds(20),
             visibility_timeout=duration,
             retention_period=duration
@@ -339,15 +396,17 @@ class CracklingStack(Stack):
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
                 'BUCKET' : s3Genome.bucket_name,
-                'ISSL_QUEUE' : sqsIsslCreation.queue_url,
+                'ISSL_QUEUE' : sqsDetermineConcurrentExtractions.queue_url,
                 'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
                 'FILE_PARTS_QUEUE' : sqsGenomeParts.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
             }
         )
+
+
         ddbJobs.grant_stream_read(lambdaGenomeDownloadScheduler)
-        sqsIsslCreation.grant_send_messages(lambdaGenomeDownloadScheduler)
+        sqsDetermineConcurrentExtractions.grant_send_messages(lambdaGenomeDownloadScheduler)
         sqsTargetScan.grant_send_messages(lambdaGenomeDownloadScheduler)
         sqsGenomeParts.grant_send_messages(lambdaGenomeDownloadScheduler)
 
@@ -356,7 +415,7 @@ class CracklingStack(Stack):
             event_source_arn=ddbJobs.table_stream_arn,
             retry_attempts=0,
             starting_position=lambda_.StartingPosition.LATEST
-        )  
+        ) 
         lambdaGenomeDownloadScheduler.add_to_role_policy(policyAccessS3GenomeBucket)
 
        
@@ -372,48 +431,141 @@ class CracklingStack(Stack):
             environment={
                 'FILES_TABLE' : ddbGenomeParts.table_name,
                 'BUCKET' : s3Genome.bucket_name,
-                'ISSL_QUEUE' : sqsIsslCreation.queue_url
+                'ISSL_QUEUE' : sqsDetermineConcurrentExtractions.queue_url
             }
         )
 
         sqsGenomeParts.grant_consume_messages(lambdaGenomePartsDownloader)
-        sqsIsslCreation.grant_send_messages(lambdaGenomePartsDownloader)
+        sqsDetermineConcurrentExtractions.grant_send_messages(lambdaGenomePartsDownloader)
         ddbGenomeParts.grant_read_write_data(lambdaGenomePartsDownloader)
 
         lambdaGenomePartsDownloader.add_event_source_mapping(
-            "mapIsslCreation",
+            "mapppIsslCreation",
             event_source_arn=sqsGenomeParts.queue_arn,
             batch_size=1
         )
 
-
-        # -> -> issl_creation
-        lambdaIsslScorerCreation = lambda_.Function(self, "lambdaIsslScorerCreation", 
+        # -> -> determines how many concurrent extractOfftarget functions will run and calls them all
+        lambdaDetermineConcurrentExtractions = lambda_.Function(self, "lambdaDetermineConcurrentExtractions", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            code=lambda_.Code.from_asset("../modules/isslCreation"),
-            layers=[lambdaLayerIsslScorerCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
+            code=lambda_.Code.from_asset("../modules/determineConcurrentExtractions"),
+            layers=[lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
-            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
             timeout= duration,
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
-                'QUEUE' : sqsTargetScan.queue_url,
+                'QUEUE' : sqsExtractOfftargets.queue_url,
+                'DDB' : ddbOfftargets.table_name,
                 'BUCKET' : s3GenomeAccess.attr_alias,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
             }
         )
 
-        sqsIsslCreation.grant_consume_messages(lambdaIsslScorerCreation)
-        sqsTargetScan.grant_send_messages(lambdaIsslScorerCreation)
-        lambdaIsslScorerCreation.add_event_source_mapping(
-            "mapIsslCreation",
+        s3Genome.grant_read_write(lambdaDetermineConcurrentExtractions)
+        ddbOfftargets.grant_read_write_data(lambdaDetermineConcurrentExtractions)
+        sqsDetermineConcurrentExtractions.grant_consume_messages(lambdaDetermineConcurrentExtractions)
+        sqsExtractOfftargets.grant_send_messages(lambdaDetermineConcurrentExtractions)
+        lambdaDetermineConcurrentExtractions.add_event_source_mapping(
+            "mapppExtractOfftargets",
+            event_source_arn=sqsDetermineConcurrentExtractions.queue_arn,
+            batch_size=1
+        )
+        lambdaDetermineConcurrentExtractions.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        # -> -> extractOfftargets
+        lambdaExtractOfftargets = lambda_.Function(self, "lambdaExtractOfftargets", 
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/extractOfftargets"),
+            layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs,],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'QUEUE' : sqsOfftargetsMerger.queue_url,
+                'DDB' : ddbOfftargets.table_name,
+                'BUCKET' : s3GenomeAccess.attr_alias,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+
+        ddbOfftargets.grant_read_write_data(lambdaExtractOfftargets)
+        sqsExtractOfftargets.grant_consume_messages(lambdaExtractOfftargets)
+        sqsOfftargetsMerger.grant_send_messages(lambdaExtractOfftargets)
+        lambdaExtractOfftargets.add_event_source_mapping(
+            "mapppExtractOfftargets",
+            event_source_arn=sqsExtractOfftargets.queue_arn,
+            batch_size=1
+        )
+        lambdaExtractOfftargets.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        # Lambda that mergers all offtargets file into one for issl creation
+        lambdaOfftargetsMerger = lambda_.Function(self, "lambdaOfftargetsMerger", 
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/OfftargetsMerger"),
+            layers=[lambdaLayerCommonFuncs],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'QUEUE' : sqsIsslCreation.queue_url,
+                'BUCKET' : s3GenomeAccess.attr_alias,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+
+        s3Genome.grant_read_write(lambdaOfftargetsMerger)
+        sqsOfftargetsMerger.grant_consume_messages(lambdaOfftargetsMerger)
+        sqsIsslCreation.grant_send_messages(lambdaOfftargetsMerger)
+        lambdaOfftargetsMerger.add_event_source_mapping(
+            "mapppExtractOfftargets",
+            event_source_arn=sqsOfftargetsMerger.queue_arn,
+            batch_size=1
+        )
+        lambdaOfftargetsMerger.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        # -> -> issl_creation
+        lambdaIsslCreation = lambda_.Function(self, "lambdaIsslCreation", 
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslCreation"),
+            layers=[lambdaLayerIsslCreation, lambdaLayerCommonFuncs, lambdaLayerLib],
+            vpc=cracklingVpc,
+            timeout= duration,
+            memory_size= 10240,
+            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            environment={
+                'QUEUE' : sqsTargetScan.queue_url,
+                'ISSL_QUEUE' : sqsIsslReinvoke.queue_url,
+                'BUCKET' : s3GenomeAccess.attr_alias,
+                'LD_LIBRARY_PATH' : ld_library_path,
+                'PATH' : path
+            }
+        )
+
+        sqsIsslCreation.grant_consume_messages(lambdaIsslCreation)
+        sqsIsslReinvoke.grant_consume_messages(lambdaIsslCreation)
+        sqsIsslReinvoke.grant_send_messages(lambdaIsslCreation)
+        sqsTargetScan.grant_send_messages(lambdaIsslCreation)
+        lambdaIsslCreation.add_event_source_mapping(
+            "mapppIsslCreation",
             event_source_arn=sqsIsslCreation.queue_arn,
             batch_size=1
         )
-        lambdaIsslScorerCreation.add_to_role_policy(policyAccessS3GenomeBucket)
+        lambdaIsslCreation.add_event_source_mapping(
+            "mapppIsslReinvoked",
+            event_source_arn=sqsIsslReinvoke.queue_arn,
+            batch_size=1
+        )
+        lambdaIsslCreation.add_to_role_policy(policyAccessS3GenomeBucket)
         
         ### Lambda function that scans a sequence for CRISPR sites.
         # This function is triggered when a record is written to the DynamoDB jobs table.
@@ -472,6 +624,8 @@ class CracklingStack(Stack):
             }
         )
 
+
+     
         lambdaConsensus.add_to_role_policy(policyAccessS3GenomeBucket)
 
         sqsConsensus.grant_consume_messages(lambdaConsensus)
@@ -489,11 +643,11 @@ class CracklingStack(Stack):
         ### Lambda function that assesses guide specificity using ISSL.
         # This function consumes messages in the SQS Issl queue.
         # The results are written to the DynamoDB consensus table.
-        lambdaIsslScorer = lambda_.Function(self, "lambdaIsslScorer", 
+        lambdaIssl = lambda_.Function(self, "lambdaIssl", 
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/issl"),
-            layers=[lambdaLayerLib, lambdaLayerIsslScorer, lambdaLayerCommonFuncs],
+            layers=[lambdaLayerLib, lambdaLayerIssl, lambdaLayerCommonFuncs],
             vpc=cracklingVpc,
             timeout= duration,
             memory_size= 10240,
@@ -508,20 +662,20 @@ class CracklingStack(Stack):
                 'PATH' : path
             }
         )
-        sqsIssl.grant_consume_messages(lambdaIsslScorer)
-        sqsIssl.grant_send_messages(lambdaIsslScorer)
-        lambdaIsslScorer.add_event_source_mapping(
+        sqsIssl.grant_consume_messages(lambdaIssl)
+        sqsIssl.grant_send_messages(lambdaIssl)
+        lambdaIssl.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
             batch_size=10, 
             max_batching_window=Duration.seconds(5)
         )
-        ddbJobs.grant_read_write_data(lambdaIsslScorer)
-        ddbTaskTracking.grant_read_write_data(lambdaIsslScorer)
-        ddbTargets.grant_read_write_data(lambdaIsslScorer)
-        lambdaIsslScorer.add_to_role_policy(policyAccessS3GenomeBucket)
-
-
+        ddbJobs.grant_read_write_data(lambdaIssl)
+        ddbTaskTracking.grant_read_write_data(lambdaIssl)
+        ddbTargets.grant_read_write_data(lambdaIssl)
+        lambdaIssl.add_to_role_policy(policyAccessS3GenomeBucket)
+        
+        
 
         s3Genome.add_to_resource_policy(
             iam_.PolicyStatement(
@@ -530,6 +684,10 @@ class CracklingStack(Stack):
                     iam_.ArnPrincipal(lambdaGenomeDownloadScheduler.role.role_arn),
                     iam_.ArnPrincipal(lambdaCustomDataUpload.role.role_arn),
                     iam_.ArnPrincipal(lambdaGenomePartsDownloader.role.role_arn),
+                    iam_.ArnPrincipal(lambdaExtractOfftargets.role.role_arn),
+                    iam_.ArnPrincipal(lambdaIsslCreation.role.role_arn),
+                    iam_.ArnPrincipal(lambdaConsensus.role.role_arn),
+                    iam_.ArnPrincipal(lambdaIssl.role.role_arn),
                 ],
                 actions=[
                     "s3:GetObject",
@@ -546,12 +704,11 @@ class CracklingStack(Stack):
         )
 
 
-
-
         ### API
         # This handles the staging and deployment of the API. A ClouydFormation output is generated with the API URL.
         # Enable cross-origin resource sharing (CORS).
-        apiRest = api_.RestApi(self, "CracklingRestApi",
+        apiRest = api_.RestApi(self, 
+            "CracklingRestApi",
             default_cors_preflight_options=api_.CorsOptions(
                 allow_origins=["*"], 
                  
@@ -792,7 +949,8 @@ class CracklingStack(Stack):
 
         ### The frontend contains a placeholder for the API URL
         # This Lambda function is invoked when the Stack is created or updated
-        lambdaUpdateFrontendWithApiUrl = lambda_.Function(self, "lambdaUpdateFrontendWithApiUrl",
+        lambdaUpdateFrontendWithApiUrl = lambda_.Function(
+            self, "lambdaUpdateFrontendWithApiUrl",
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
             code=lambda_.Code.from_asset("../modules/updateApiUrl"),
