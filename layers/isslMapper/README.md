@@ -5,20 +5,27 @@ Mapper tasks combine the selected hydrated buckets from all index slices for
 one guide batch. The Dispatcher supplies each guide's bucket indexes, so the
 Mapper downloads each required bucket once and each guide scans only its own
 selected ranges. The configured batch cap is 95 guides, with a separate bound on
-the total hydrated input bytes. The Extractor and cache format stay unchanged.
+the total hydrated input bytes.
 
 The 95-guide cap uses 97 DynamoDB transaction actions: 95 guide updates, the
 shared job counter update and durable batch-completion record, leaving three
 actions spare. The Reducer's hard maximum remains 98 guides. It commits the
 guide scores, progress increment and completion record atomically. Native
-scoring and its CLI do not need a binary rebuild for this cap change.
+scoring uses the CLI documented below; changing only the guide-count cap does
+not change that interface.
 
-**Rebuild the binary before using the schema-7 wrapper.** The existing packaged
-binary implements an incompatible shard/contribution interface. No binary was
-built or packaged as part of this revision. Build from the updated local source
-`ISSLScoreOfftargetsMMF/ISSLScoreOfftargetsMMF_AVX2.cpp`; the historical
-[CracklingPlusPlus commit `74a4561`](https://github.com/bmds-lab/CracklingPlusPlus/commit/74a4561a4a503612d826419325a85dfc3f87e15a)
-does not itself provide the schema-7 interface.
+The packaged `mapper` binary advertises the current seven-argument selected-
+bucket interface in its embedded usage text. The Mapper C++ source is not
+vendored in this repository. The source is
+[`ISSLScoreOfftargetsMMF_AVX2.cpp`](https://github.com/Darragh-Nugent/CracklingPlusPlus/blob/bf62b01/ISSLScoreOfftargetsMMF/ISSLScoreOfftargetsMMF_AVX2.cpp)
+at commit [`bf62b01`](https://github.com/Darragh-Nugent/CracklingPlusPlus/commit/bf62b01)
+on the CracklingPlusPlus `aws-avx2-mmf-scorer` branch. Rebuilding requires a
+checkout of that commit implementing the CLI and output contracts below; do
+not assume an older shard/contribution scorer is interchangeable.
+The build recipe below expects that checkout to provide
+`ISSLScoreOfftargetsMMF/ISSLScoreOfftargetsMMF_AVX2.cpp` and its CMake target.
+Embedded usage text alone does not verify runtime compatibility or scoring
+correctness; validate a replacement binary in the Lambda container.
 
 Before building, change that target's CMake options from `-march=native` to
 explicit Lambda-compatible instructions:
@@ -85,6 +92,12 @@ selectedBucketCount bucketIndex...         # one row per query
 ```
 
 Bucket indexes refer to the task's bucket vector; they are not off-target IDs.
+The selected bucket count is variable: one bucket per index mask/slice for
+each guide, including an index with 15 slices. Masks are applied by the
+Dispatcher; the scorer receives only the resulting bucket indexes and
+hydrated records. See the [Extractor README](../isslCandidateExtractor/README.md)
+for index format, mask coverage and cache replacement requirements.
+
 Preserve the supplied bucket order, each guide's slice order and fragment
 record order. Empty buckets retain their vector entry. Off-target IDs are
 deduplicated locally per guide across its selected ranges, retaining sequence
@@ -108,20 +121,45 @@ those scores may represent stopping points and the wrapper labels the batch
 schema-7 `mapper-result.json` for the whole batch. The Reducer persists these
 final scores and progress, without contribution downloads or deduplication.
 
-The wrapper streams downloads with `MAPPER_DOWNLOAD_WORKERS` (default 4,
-range 1..16), validates the manifests and planned hydrated bytes, and stages at
-most two copies of the hydrated input during concatenation. Native stdout and
-stderr go to temporary files; the process timeout uses the remaining Lambda
-time with a 15-second margin. Actual peak memory and duration still require
-the rice and mistletoe deployment benchmarks.
+## Capacity
+
+The Dispatcher and Mapper both use `MAPPER_SAFE_BYTES`, configured by CDK as
+8 GiB. It bounds the total hydrated records in the batch's distinct selected
+buckets across all slices. Each bucket shared by several guides is staged
+once, but an off-target appearing in multiple slices occupies a record in
+each slice's bucket before native deduplication. The Dispatcher splits guide
+batches at 95 guides or the byte budget, and rejects a single guide whose
+selected buckets exceed that byte budget.
+
+CDK gives each Mapper 10,240 MiB RAM, 10 GiB temporary disk and a 15-minute
+timeout. The wrapper streams downloads with `MAPPER_DOWNLOAD_WORKERS`
+(default 4, range 1..16), validates manifests and planned hydrated bytes,
+and requires:
+
+```text
+free temporary disk >= 2 * hydratedInputBytes + 8 MiB
+```
+
+This conservative staging check allows slightly less than 5 GiB input on the
+configured disk, depending on other disk use. The Dispatcher still partitions
+against 8 GiB, so batches between that practical disk limit and 8 GiB can pass
+dispatch but fail staging. The check does not automatically split those
+batches. The input budget is not a bound on native peak RAM.
+
+Native stdout and stderr go to temporary files; the process timeout uses the
+remaining Lambda time with a 15-second margin. Peak memory and duration must
+be measured for the actual index and workload.
 
 ## Runtime shared libraries
 
 The AVX2 Mapper dynamically links Amazon Linux 2's Boost Regex, Boost
-Iostreams, and OpenMP runtime libraries. Package the matching copies in this
-repository's shared-library layer; do not copy Ubuntu/WSL libraries.
+Iostreams, and OpenMP runtime libraries. These libraries are already committed
+under `layers/lib/lib/`, and CDK packages them in the shared-library layer.
+They do not need to be collected again for a normal deployment.
 
-From the Crackling-AWS repository root, run:
+If a rebuilt Mapper needs refreshed dependencies, use the matching Amazon
+Linux 2 libraries rather than Ubuntu/WSL host libraries. From the Crackling-AWS
+repository root, run:
 
 ```bash
 sudo docker run --rm \
