@@ -55,8 +55,29 @@ N * 5 signature bytes
 N * 1 occurrence bytes
 uint64 overflowCount
 overflowCount * 16 overflow rows
-masks and compressed bucket lists
+sliceCount * uint64 masks
+per slice:
+  B * uint64 decoded bucket-entry counts
+  B * uint64 compressed bucket-byte counts
+  uint64 total compressed payload bytes
+  compressed bucket streams in bucket order
 ```
+
+`sequenceLength` must be 20. Each mask is a nonzero 20-bit position mask;
+`B = 1 << (2 * popcount(mask))` is calculated independently for each slice.
+The Coordinator reads the declared slice count and every mask from the file,
+so the format supports varying mask counts and weights, including 15 slices.
+Its `NUM_SHARDS=5` environment setting is unused. The current index is built
+outside this repository; the legacy `isslCreation` module and its binary do
+not define this format. The
+[Coordinator reader](../../modules/isslCoordinator/lambda_function.py)
+defines the consumer contract.
+
+The Dispatcher selects an exact matching bucket from each mask. Complete
+retrieval within distance four requires every set of up to four mismatch
+positions to be disjoint from at least one mask. The code validates the index
+structure but does not verify that coverage property; the number of masks
+alone does not guarantee it.
 
 An occurrence byte in the range 1–254 is the complete count. Sentinel `255`
 means the full `uint32` count is stored in a sorted 16-byte overflow row:
@@ -164,7 +185,7 @@ selected uncached buckets. Guide grouping also bounds cumulative bucket work.
 The Lambda logs actual catalogue, bucket, hydrated-output, and combined local
 file byte counts so the estimate can be compared with production behaviour.
 
-The dynamic allocator therefore distinguishes two cases:
+The feasibility check distinguishes two cases:
 
 - `RETRY_WITH_MORE_EXTRACTORS`: the staged bucket footprint alone is below the
   configured safe working limit, but adding the catalogue partition reaches or
@@ -174,6 +195,16 @@ The dynamic allocator therefore distinguishes two cases:
   at the selected partition count. The Dispatcher rejects this task; this does
   not prove that every larger partition count would also fail.
 
+These labels describe raised errors. The current Dispatcher does not
+automatically increase the partition count after the cumulative check fails.
+CDK sets `MAX_EXTRACTORS=50` and `EXTRACTOR_SAFE_BYTES=8 GiB`; the estimate must
+be strictly below that limit. It sets the extraction guide-group cap to 1,000
+(the Python module default is 100). Every selected uncached bucket across all
+slices contributes to the estimate. A single guide is kept whole even when
+it exceeds the grouping budget, then accepted or rejected by the feasibility
+check. The extractor-count cap limits ID partitions per group, not reserved
+Lambda concurrency.
+
 The Dispatcher can calculate this before publishing extraction work because
 `shards.json` contains `offtargetsCount`, the overflow count, and every
 bucket's byte boundaries and decoded-entry counts. This model primarily
@@ -182,4 +213,18 @@ plan and other temporary files. Each merged S3 range read is bounded by
 `MAX_MERGE_RANGE_BYTES` (default 16 MiB); the default merge gap is 256 KiB.
 Larger buckets stream directly to disk. Memory-map residency, range
 buffers, and native process overhead require separate memory headroom; the
-staged-file estimate is not a peak-RAM bound.
+staged-file estimate is not a peak-RAM bound. CDK configures each Extractor
+with 10,240 MiB RAM, 10 GiB temporary disk and a 15-minute timeout.
+
+## Cache and index replacement
+
+Hydrated parts and manifests use
+`<genome>/issl/cache/slices/<slice-id>/buckets/<bucket-id>/` and are tagged
+`crackling-cache=extracted-candidates`. CDK expires tagged objects
+asynchronously after `candidateRetentionDays` (default seven days).
+
+Cache identities do not include an index version or mask value. Before
+replacing an index under the same genome prefix, finish outstanding work
+against the old index. Clear its hydrated cache and regenerate `shards.json`
+through the Coordinator before new scoring work. A separate genome prefix
+avoids reusing those cache identities.

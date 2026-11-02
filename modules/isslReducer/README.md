@@ -10,7 +10,9 @@ for this schema-7 batch result:
 
 Old per-guide/shard paths and unrelated objects are ignored. A result on the
 batch path with an incompatible schema fails rather than mixing scoring formats.
-The Extractor and Extraction Completion interfaces are unchanged.
+See the [Mapper README](../../layers/isslMapper/README.md) for its scoring
+interface and the [Extractor README](../../layers/isslCandidateExtractor/README.md)
+for hydration and Extraction Completion contracts.
 
 ## Validation and persistence
 
@@ -36,7 +38,8 @@ record prevents double counting even if S3 publication fails or the transaction
 commits but its response is lost. All target conditions are checked before any
 new scores or progress are committed.
 
-The completion identity remains `<job-id>:<target-id>`. Conditional guards
+Each target's `ReducerTaskId` is `<job-id>:<target-id>`; the durable batch guard
+is keyed separately by `JobID` and `BatchID`. Conditional guards
 require an existing target without `ReducerTaskId` and an existing tracking
 item. Transaction conflicts and throughput throttling use 16 attempts with exponential jitter starting
 at 0.1 seconds and capped at 2 seconds per sleep. Retries stop early if the
@@ -77,7 +80,10 @@ commits leaves its durable completion record; retries skip the committed batch
 without advancing counters again. SQS delivery returns `batchItemFailures` for failed messages while
 allowing other messages to succeed; direct S3 failures propagate.
 
-Deployment must include the CDK changes that create the completion table, set
-`BATCH_COMPLETIONS_TABLE` and grant table access plus `TransactWriteItems` for
-all three tables. Deploy the Dispatcher cap and Reducer change together. The
-native Mapper interface is unchanged, so no binary rebuild is required.
+CDK creates the completion table, sets `BATCH_COMPLETIONS_TABLE`, grants table
+access plus `TransactWriteItems` for all three tables, and configures the SQS
+event source to report batch-item failures. Its batch size is 10, the Lambda
+timeout is 15 minutes, reserved concurrency is 50, and the SQS event source
+has a maximum concurrency of 10. The reserved concurrency limit belongs to
+the Reducer; the Dispatcher's `MAX_EXTRACTORS=50` independently limits
+extraction ID partitions per group.
