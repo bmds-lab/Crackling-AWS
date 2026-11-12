@@ -1,1 +1,2 @@
 aws-cdk-lib==2.97.0
+aws-cdk.asset-awscli-v1==2.2.200

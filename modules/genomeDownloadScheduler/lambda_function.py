@@ -15,7 +15,7 @@ except ImportError:
 
 # Global variables
 S3_BUCKET = os.environ['BUCKET']
-TARGET_SCAN_QUEUE = os.environ['TARGET_SCAN_QUEUE']
+COORDINATOR_QUEUE = os.environ['COORDINATOR_QUEUE']
 ISSL_QUEUE = os.getenv('ISSL_QUEUE')
 LIST_PREFIXES = [".issl", ".offtargets"]
 FILE_PARTS_QUEUE = os.getenv('FILE_PARTS_QUEUE')
@@ -193,7 +193,7 @@ def lambda_handler(event, context):
     accession = event['Records'][0]["dynamodb"]["NewImage"]["Genome"]["S"]
     jobid = event['Records'][0]["dynamodb"]["NewImage"]["JobID"]["S"]
     sequence = event['Records'][0]['dynamodb']["NewImage"]["Sequence"]["S"]
-    body ={ 
+    body = {
         "Genome": accession, 
         "Sequence": sequence, 
         "JobID": jobid
@@ -218,8 +218,12 @@ def lambda_handler(event, context):
         print(file_names)
     else:
         if  mulit_part_issl:
-            print ("Issl file has already been generated. Moving to scoring process")
-            sqs_send_message(TARGET_SCAN_QUEUE, json_object) 
+            print("Issl file has already been generated. Moving to coordinator")
+            coordinator_message = json.dumps({
+                "schemaVersion": 1,
+                **body,
+            })
+            sqs_send_message(COORDINATOR_QUEUE, coordinator_message)
             print("All Done... Terminating Program.")
         else:
             print("The fasta files exist but the issl ones do not")

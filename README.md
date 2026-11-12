@@ -280,7 +280,7 @@ See here: https://www.commandlinefu.com/commands/view/10238/copy-all-shared-libr
 Working in the root directory of the repo, run:
 
 ```bash
-ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
+ldd layers/isslMapper/mapper | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects
 ```
 
 then
@@ -310,6 +310,10 @@ cdk bootstrap aws://377188290550/ap-southeast-2
 # Useful CDK commands include:
 cdk synth # for creating the CloudFormation template without deploying
 cdk deploy # for deploying the stack via CloudFormation
+cdk deploy -c candidateRetentionDays=7 # optional: candidate cache retention (default: 7 days)
 cdk destroy # for destroying the stack in CloudFormation
 # add the `--profile` flag to indicate which set of AWS credentials you wish to use, e.g.  `--profile bmds`.
 ```
+Extracted candidate parts and their manifests are tagged on upload and expire through
+S3 Lifecycle after `candidateRetentionDays` days from creation. Deletion is asynchronous.
+Existing untagged cache objects are unaffected. The rule does not expire source indices.

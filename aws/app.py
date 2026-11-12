@@ -81,9 +81,21 @@ class CracklingStack(Stack):
         cdk.CfnOutput(self, "Cloudfront_URL", value=cloudfront_url)
 
         ### Create an S3 bucket to store genome data
+        candidate_retention_context = self.node.try_get_context("candidateRetentionDays")
+        candidate_retention_days = int(
+            7 if candidate_retention_context is None else candidate_retention_context
+        )
+        if candidate_retention_days < 1:
+            raise ValueError("candidateRetentionDays must be a positive integer")
+
         s3Genome = s3_.Bucket(self, "genomeStorage", 
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+            lifecycle_rules=[s3_.LifecycleRule(
+                id="ExpireExtractedCandidates",
+                tag_filters={"crackling-cache": "extracted-candidates"},
+                expiration=Duration.days(candidate_retention_days),
+            )],
             cors=[s3_.CorsRule(
                 allowed_methods=[
                     s3_.HttpMethods.GET,
@@ -155,6 +167,14 @@ class CracklingStack(Stack):
             stream=ddb_.StreamViewType.NEW_AND_OLD_IMAGES
         )
 
+        ### Durable retry guards for atomic ISSL batch completion.
+        ddbIsslBatchCompletions = ddb_.Table(self, "ddbIsslBatchCompletions",
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=ddb_.BillingMode.PAY_PER_REQUEST,
+            partition_key=ddb_.Attribute(name="JobID", type=ddb_.AttributeType.STRING),
+            sort_key=ddb_.Attribute(name="BatchID", type=ddb_.AttributeType.STRING)
+        )
+
         ### DynamoDB table for storing targets.
         # The sort key enables quicker indexing.
         ddbTargets = ddb_.Table(self, "ddbTargets",
@@ -184,9 +204,16 @@ class CracklingStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        ### This layer provides the ISSL scoring binary.
-        lambdaLayerIsslScorer = lambda_.LayerVersion(self, "lambdaLayerIsslScorer",
-            code=lambda_.Code.from_asset("../layers/isslScoreOfftargets"),
+        ### C++ Mapper used by the distributed off-target scoring path.
+        lambdaLayerIsslMapper = lambda_.LayerVersion(self, "lambdaLayerIsslMapper",
+            code=lambda_.Code.from_asset("../layers/isslMapper"),
+            removal_policy=RemovalPolicy.DESTROY,
+            compatible_architectures=[lambda_.Architecture.X86_64]
+        )
+
+        lambdaLayerIsslCandidateExtractor = lambda_.LayerVersion(
+            self, "lambdaLayerIsslCandidateExtractor",
+            code=lambda_.Code.from_asset("../layers/isslCandidateExtractor"),
             removal_policy=RemovalPolicy.DESTROY,
             compatible_architectures=[lambda_.Architecture.X86_64]
         )
@@ -281,6 +308,43 @@ class CracklingStack(Stack):
             visibility_timeout=duration,
             retention_period=Duration.minutes(30)
         )
+
+        ### One message is published here after a new ISSL has been uploaded.
+        # This keeps Coordinator work separate from per-guide scoring messages.
+        sqsIsslCoordinator = sqs_.Queue(self, "sqsIsslCoordinator",
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(30)
+        )
+
+        ### Internal queue containing one guide-batch task per ISSL shard.
+        sqsIsslMapper = sqs_.Queue(self, "sqsIsslMapper",
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(30)
+        )
+
+        sqsIsslCandidateExtractor = sqs_.Queue(
+            self, "sqsIsslCandidateExtractor",
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(30)
+        )
+        sqsIsslExtractionCompletion = sqs_.Queue(
+            self, "sqsIsslExtractionCompletion",
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(30)
+        )
+
+        ### Buffer Mapper completion events before reduction.
+        # Reducer concurrency is bounded on the Lambda so bursts do not create
+        # excessive contention on the shared TaskTracking DynamoDB item.
+        sqsIsslReducer = sqs_.Queue(self, "sqsIsslReducer",
+            receive_message_wait_time=Duration.seconds(20),
+            visibility_timeout=duration,
+            retention_period=Duration.minutes(45)
+        )
         
         ### SQS queue for evaluating guide efficiency
         # The TargetScan lambda function adds guides to this queue for processing
@@ -340,7 +404,7 @@ class CracklingStack(Stack):
             environment={
                 'BUCKET' : s3Genome.bucket_name,
                 'ISSL_QUEUE' : sqsIsslCreation.queue_url,
-                'TARGET_SCAN_QUEUE' : sqsTargetScan.queue_url,
+                'COORDINATOR_QUEUE' : sqsIsslCoordinator.queue_url,
                 'FILE_PARTS_QUEUE' : sqsGenomeParts.queue_url,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
@@ -348,7 +412,7 @@ class CracklingStack(Stack):
         )
         ddbJobs.grant_stream_read(lambdaGenomeDownloadScheduler)
         sqsIsslCreation.grant_send_messages(lambdaGenomeDownloadScheduler)
-        sqsTargetScan.grant_send_messages(lambdaGenomeDownloadScheduler)
+        sqsIsslCoordinator.grant_send_messages(lambdaGenomeDownloadScheduler)
         sqsGenomeParts.grant_send_messages(lambdaGenomeDownloadScheduler)
 
         lambdaGenomeDownloadScheduler.add_event_source_mapping(
@@ -399,7 +463,7 @@ class CracklingStack(Stack):
             memory_size= 10240,
             ephemeral_storage_size = cdk.Size.gibibytes(10),
             environment={
-                'QUEUE' : sqsTargetScan.queue_url,
+                'COORDINATOR_QUEUE' : sqsIsslCoordinator.queue_url,
                 'BUCKET' : s3GenomeAccess.attr_alias,
                 'LD_LIBRARY_PATH' : ld_library_path,
                 'PATH' : path
@@ -407,7 +471,7 @@ class CracklingStack(Stack):
         )
 
         sqsIsslCreation.grant_consume_messages(lambdaIsslScorerCreation)
-        sqsTargetScan.grant_send_messages(lambdaIsslScorerCreation)
+        sqsIsslCoordinator.grant_send_messages(lambdaIsslScorerCreation)
         lambdaIsslScorerCreation.add_event_source_mapping(
             "mapIsslCreation",
             event_source_arn=sqsIsslCreation.queue_arn,
@@ -486,40 +550,188 @@ class CracklingStack(Stack):
         ddbJobs.grant_read_write_data(lambdaConsensus)
 
 
-        ### Lambda function that assesses guide specificity using ISSL.
-        # This function consumes messages in the SQS Issl queue.
-        # The results are written to the DynamoDB consensus table.
-        lambdaIsslScorer = lambda_.Function(self, "lambdaIsslScorer", 
+        ### Group each SQS guide batch by job/genome and fan it out to all five
+        # ISSL shards.
+        lambdaIsslDispatcher = lambda_.Function(self, "lambdaIsslDispatcher",
             runtime=lambda_.Runtime.PYTHON_3_10,
             handler="lambda_function.lambda_handler",
-            code=lambda_.Code.from_asset("../modules/issl"),
-            layers=[lambdaLayerLib, lambdaLayerIsslScorer, lambdaLayerCommonFuncs],
+            code=lambda_.Code.from_asset("../modules/isslDispatcher"),
             vpc=cracklingVpc,
             timeout= duration,
-            memory_size= 10240,
-            ephemeral_storage_size = cdk.Size.gibibytes(10),
+            memory_size=1024,
             environment={
                 'BUCKET' : s3GenomeAccess.attr_alias,
-                'TASK_TRACKING_TABLE' : ddbTaskTracking.table_name,
-                'TARGETS_TABLE' : ddbTargets.table_name,
-                'JOBS_TABLE' : ddbJobs.table_name,
-                'ISSL_QUEUE' : sqsIssl.queue_url,
-                'LD_LIBRARY_PATH' : ld_library_path,
-                'PATH' : path
+                'MAPPER_QUEUE': sqsIsslMapper.queue_url,
+                'EXTRACTOR_QUEUE': sqsIsslCandidateExtractor.queue_url,
+                'MAX_EXTRACTORS': '50',
+                'EXTRACTOR_SAFE_BYTES': str(8 * 1024 ** 3),
+                'MAPPER_SAFE_BYTES': str(8 * 1024 ** 3),
+                # 95 guides + progress update + completion guard = 97 of 100
+                # DynamoDB transaction actions, leaving three actions spare.
+                'MAX_GUIDES_PER_MAPPER': '95',
+                'MAX_GUIDES_PER_EXTRACTION_GROUP': '1000',
+                'MAX_DISTANCE': '4',
+                'SCORE_THRESHOLD': '75',
+                'SCORE_METHOD': 'and'
             }
         )
-        sqsIssl.grant_consume_messages(lambdaIsslScorer)
-        sqsIssl.grant_send_messages(lambdaIsslScorer)
-        lambdaIsslScorer.add_event_source_mapping(
+        sqsIssl.grant_consume_messages(lambdaIsslDispatcher)
+        sqsIsslMapper.grant_send_messages(lambdaIsslDispatcher)
+        sqsIsslCandidateExtractor.grant_send_messages(lambdaIsslDispatcher)
+        lambdaIsslDispatcher.add_event_source_mapping(
             "mapLdaIsslSqsIssl",
             event_source_arn=sqsIssl.queue_arn,
-            batch_size=10, 
+            batch_size=5000,
+            max_batching_window=Duration.seconds(120)
+        )
+        lambdaIsslDispatcher.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        lambdaIsslCandidateExtractor = lambda_.Function(
+            self, "lambdaIsslCandidateExtractor",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslCandidateExtractor"),
+            layers=[lambdaLayerIsslCandidateExtractor, lambdaLayerLib],
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
+            timeout=duration,
+            memory_size=10240,
+            ephemeral_storage_size=cdk.Size.gibibytes(10),
+            environment={
+                'BUCKET': s3GenomeAccess.attr_alias,
+                'COMPLETION_QUEUE': sqsIsslExtractionCompletion.queue_url,
+                'LD_LIBRARY_PATH': ld_library_path
+            }
+        )
+        sqsIsslCandidateExtractor.grant_consume_messages(lambdaIsslCandidateExtractor)
+        sqsIsslExtractionCompletion.grant_send_messages(lambdaIsslCandidateExtractor)
+        lambdaIsslCandidateExtractor.add_event_source_mapping(
+            "mapLdaIsslSqsCandidateExtractor",
+            event_source_arn=sqsIsslCandidateExtractor.queue_arn,
+            batch_size=1
+        )
+        lambdaIsslCandidateExtractor.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        lambdaIsslExtractionCompletion = lambda_.Function(
+            self, "lambdaIsslExtractionCompletion",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslExtractionCompletion"),
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
+            timeout=duration,
+            memory_size=1024,
+            environment={
+                'BUCKET': s3GenomeAccess.attr_alias,
+                'MAPPER_QUEUE': sqsIsslMapper.queue_url
+            }
+        )
+        sqsIsslExtractionCompletion.grant_consume_messages(lambdaIsslExtractionCompletion)
+        sqsIsslMapper.grant_send_messages(lambdaIsslExtractionCompletion)
+        lambdaIsslExtractionCompletion.add_event_source_mapping(
+            "mapLdaIsslSqsExtractionCompletion",
+            event_source_arn=sqsIsslExtractionCompletion.queue_arn,
+            batch_size=5,
             max_batching_window=Duration.seconds(5)
         )
-        ddbJobs.grant_read_write_data(lambdaIsslScorer)
-        ddbTaskTracking.grant_read_write_data(lambdaIsslScorer)
-        ddbTargets.grant_read_write_data(lambdaIsslScorer)
-        lambdaIsslScorer.add_to_role_policy(policyAccessS3GenomeBucket)
+        lambdaIsslExtractionCompletion.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        ### Coordinator for distributed off-target scoring. Target Scan is
+        # released only after the five-shard manifest has been persisted.
+        lambdaIsslCoordinator = lambda_.Function(self, "lambdaIsslCoordinator",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslCoordinator"),
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
+            timeout=duration,
+            memory_size=1024,
+            environment={
+                'BUCKET': s3GenomeAccess.attr_alias,
+                'TARGET_SCAN_QUEUE': sqsTargetScan.queue_url,
+                'NUM_SHARDS': '5'
+            }
+        )
+        sqsIsslCoordinator.grant_consume_messages(lambdaIsslCoordinator)
+        sqsTargetScan.grant_send_messages(lambdaIsslCoordinator)
+        lambdaIsslCoordinator.add_event_source_mapping(
+            "mapLdaIsslSqsCoordinator",
+            event_source_arn=sqsIsslCoordinator.queue_arn,
+            batch_size=1
+        )
+        lambdaIsslCoordinator.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        ### Score each guide batch against all of its selected index slices.
+        # One result marker contains the native final scores for the batch.
+        lambdaIsslMapper = lambda_.Function(self, "lambdaIsslMapper",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslMapper"),
+            layers=[lambdaLayerIsslMapper, lambdaLayerLib],
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
+            timeout=duration,
+            memory_size=10240,
+            ephemeral_storage_size=cdk.Size.gibibytes(10),
+            environment={
+                'LD_LIBRARY_PATH': ld_library_path,
+                'MAPPER_SAFE_BYTES': str(8 * 1024 ** 3),
+                'MAPPER_DOWNLOAD_WORKERS': '4'
+            }
+        )
+        sqsIsslMapper.grant_consume_messages(lambdaIsslMapper)
+        lambdaIsslMapper.add_event_source_mapping(
+            "mapLdaIsslSqsMapper",
+            event_source_arn=sqsIsslMapper.queue_arn,
+            batch_size=1
+        )
+        lambdaIsslMapper.add_to_role_policy(policyAccessS3GenomeBucket)
+
+        ### Persist one Mapper batch's final scores with retry-safe progress.
+        # No per-offtarget streams or cross-slice SQLite reduction are required.
+        lambdaIsslReducer = lambda_.Function(self, "lambdaIsslReducer",
+            runtime=lambda_.Runtime.PYTHON_3_10,
+            handler="lambda_function.lambda_handler",
+            code=lambda_.Code.from_asset("../modules/isslReducer"),
+            vpc=cracklingVpc,
+            vpc_subnets=ec2_.SubnetSelection(subnet_type=ec2_.SubnetType.PRIVATE_ISOLATED),
+            timeout=duration,
+            memory_size=4096,
+            reserved_concurrent_executions=50,
+            environment={
+                'TARGETS_TABLE': ddbTargets.table_name,
+                'TASK_TRACKING_TABLE': ddbTaskTracking.table_name,
+                'BATCH_COMPLETIONS_TABLE': ddbIsslBatchCompletions.table_name,
+            }
+        )
+        lambdaIsslReducer.add_to_role_policy(policyAccessS3GenomeBucket)
+        sqsIsslReducer.grant_consume_messages(lambdaIsslReducer)
+        lambdaIsslReducer.add_event_source_mapping(
+            "mapLdaIsslSqsReducer",
+            event_source_arn=sqsIsslReducer.queue_arn,
+            batch_size=10,
+            max_concurrency=10,
+            report_batch_item_failures=True
+        )
+        ddbTargets.grant_read_write_data(lambdaIsslReducer)
+        ddbTaskTracking.grant_read_write_data(lambdaIsslReducer)
+        ddbIsslBatchCompletions.grant_read_write_data(lambdaIsslReducer)
+        lambdaIsslReducer.add_to_role_policy(iam_.PolicyStatement(
+            actions=['dynamodb:TransactWriteItems'],
+            resources=[ddbTargets.table_arn, ddbTaskTracking.table_arn,
+                       ddbIsslBatchCompletions.table_arn]
+        ))
+        s3Genome.add_event_notification(
+            s3_.EventType.OBJECT_CREATED,
+            s3n_.SqsDestination(sqsIsslReducer),
+            s3_.NotificationKeyFilter(suffix='mapper-result.json')
+        )
+
+        cdk.CfnOutput(
+            self,
+            "IsslMapperQueueUrl",
+            value=sqsIsslMapper.queue_url
+        )
 
 
 

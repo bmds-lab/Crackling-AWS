@@ -18,16 +18,13 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Update build environment
-        run: 'sudo apt update'
-
       - name: Setup Node.js 24
         uses: actions/setup-node@v3
         with:
           node-version: '24'
 
       - name: Install AWS CDK
-        run: 'sudo npm install -g aws-cdk'
+        run: 'sudo npm install -g aws-cdk@2.97.0'
 
       - name: Install Requirements 
         run: 'pip3 install -r aws/requirements.txt'
@@ -39,7 +36,7 @@ jobs:
         run: 'mkdir -p layers/requestsPy310Pkgs/python && python3 -m pip install --target layers/requestsPy310Pkgs/python -r layers/requirements_requests.txt'
 
       - name: Create Lambda layer with lib dependencies (1/2)
-        run: "ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"
+        run: "ldd layers/isslMapper/mapper | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"
 
       - name: Create Lambda layer with lib dependencies (2/2)
         run: "ldd layers/rnaFold/rnaFold/RNAfold | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"

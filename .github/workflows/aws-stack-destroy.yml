@@ -45,7 +45,7 @@ jobs:
         run: 'mkdir -p layers/requestsPy310Pkgs/python && python3 -m pip install --target layers/requestsPy310Pkgs/python -r layers/requirements_requests.txt'
 
       - name: Create Lambda layer with lib dependencies (1/2)
-        run: "ldd layers/isslScoreOfftargets/isslScoreOfftargets | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"
+        run: "ldd layers/isslMapper/mapper | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"
 
       - name: Create Lambda layer with lib dependencies (2/2)
         run: "ldd layers/rnaFold/rnaFold/RNAfold | grep \"=> /\" | awk '{print $3}' | xargs -I '{}' cp -v '{}' layers/sharedObjects"
